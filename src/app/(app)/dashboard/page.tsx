@@ -39,11 +39,14 @@ interface DisplayPortfolioPosition extends PortfolioPositionType {
 
 export default function DashboardPage() {
   const { stockData: realtimeStockData, subscribeToSymbol, unsubscribeFromSymbol, isLoading: isLoadingRealtime, error: realtimeError } = useRealtimeStockData();
+  const [isMounted, setIsMounted] = useState(false);
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
   
-  // Use the first mock stock as the default for market overview, or null if mockStocks is empty
   const [selectedMarketSymbol, setSelectedMarketSymbol] = useState<string>(mockStocks.length > 0 ? mockStocks[0].symbol : '');
 
-  // Subscribe to the selected market symbol for real-time updates
   useEffect(() => {
     if (selectedMarketSymbol) {
       subscribeToSymbol(selectedMarketSymbol);
@@ -60,7 +63,6 @@ export default function DashboardPage() {
     return baseStock || null;
   }, [selectedMarketSymbol, realtimeStockData]);
   
-  // Subscribe to all symbols in the basePortfolio for real-time updates
   useEffect(() => {
     const portfolioSymbols = new Set(basePortfolio.map(p => p.symbol));
     portfolioSymbols.forEach(symbol => subscribeToSymbol(symbol));
@@ -105,15 +107,13 @@ export default function DashboardPage() {
   
   const [currentMarketMovers, setCurrentMarketMovers] = useState(initialMarketMovers);
 
-  // Update market movers based on real-time data
   useEffect(() => {
     const updatedMovers = {
-      gainers: [...initialMarketMovers.gainers], // Start with a copy
+      gainers: [...initialMarketMovers.gainers], 
       losers: [...initialMarketMovers.losers],
       active: [...initialMarketMovers.active],
     };
 
-    // Function to update a list of movers
     const updateMoverList = (list: MarketMover[]) => {
       return list.map(mover => {
         const rtData = realtimeStockData[mover.symbol];
@@ -122,13 +122,11 @@ export default function DashboardPage() {
         }
         return mover;
       })
-      // Re-sort based on updated data if necessary (example for gainers)
       .sort((a,b) => (b.changePercent || 0) - (a.changePercent || 0));
     };
     
     updatedMovers.gainers = updateMoverList(updatedMovers.gainers).sort((a,b) => (b.changePercent || 0) - (a.changePercent || 0));
     updatedMovers.losers = updateMoverList(updatedMovers.losers).sort((a,b) => (a.changePercent || 0) - (b.changePercent || 0));
-    // Active sort might be by volume, which also needs real-time update if available
     updatedMovers.active = updateMoverList(updatedMovers.active).sort((a,b) => 
         (realtimeStockData[b.symbol]?.dailyVolume || parseFloat(b.volume?.replace(/[^0-9.]/g, '') || '0')) - 
         (realtimeStockData[a.symbol]?.dailyVolume || parseFloat(a.volume?.replace(/[^0-9.]/g, '') || '0'))
@@ -137,7 +135,6 @@ export default function DashboardPage() {
 
     setCurrentMarketMovers(updatedMovers);
     
-    // Subscribe to symbols in market movers lists
     const moverSymbols = new Set([
         ...updatedMovers.gainers.map(s => s.symbol),
         ...updatedMovers.losers.map(s => s.symbol),
@@ -157,7 +154,7 @@ export default function DashboardPage() {
     return <MinimalStockCard key={mover.symbol} stock={displayData} className="w-full" />;
   };
   
-  if (isLoadingRealtime && !marketOverviewStock) {
+  if (isLoadingRealtime && !marketOverviewStock && !isMounted) {
     return (
         <div className="flex h-screen w-full items-center justify-center">
             <div className="text-center">
@@ -199,7 +196,7 @@ export default function DashboardPage() {
           </Button>
         }
       />
-      {isLoadingRealtime && <p className="text-sm text-muted-foreground">Connecting to real-time updates...</p>}
+      {isLoadingRealtime && isMounted && <p className="text-sm text-muted-foreground">Connecting to real-time updates...</p>}
 
 
       {/* Main Grid */}
@@ -215,15 +212,19 @@ export default function DashboardPage() {
               {marketOverviewStock && (
                 <CardDescription>
                   Price: {formatCurrency(marketOverviewStock.price)}
-                  <span className={cn(marketOverviewStock.change >= 0 ? 'text-green-500' : 'text-red-500', "ml-1")}>
-                    {' '} ({marketOverviewStock.change >= 0 ? '+' : ''}{formatCurrency(marketOverviewStock.change)} / {formatPercentage(marketOverviewStock.changePercent, 2)})
-                  </span>
+                  {isMounted ? (
+                    <span className={cn(marketOverviewStock.change >= 0 ? 'text-green-500' : 'text-red-500', "ml-1")}>
+                      {' '} ({marketOverviewStock.change >= 0 ? '+' : ''}{formatCurrency(marketOverviewStock.change)} / {formatPercentage(marketOverviewStock.changePercent, 2)})
+                    </span>
+                  ) : (
+                    <span className="ml-1">(...)</span> 
+                  )}
                    {isLoadingRealtime && marketOverviewStock.symbol === selectedMarketSymbol && <span className="ml-2 text-xs">(Updating...)</span>}
                 </CardDescription>
               )}
             </CardHeader>
             <CardContent>
-              {marketOverviewStock && marketOverviewStock.chartData && marketOverviewStock.chartData.length > 1 ? (
+              {isMounted && marketOverviewStock && marketOverviewStock.chartData && marketOverviewStock.chartData.length > 1 ? (
                 <ChartContainer config={chartConfig} className="h-[250px] w-full">
                   <RechartsLineChart data={marketOverviewStock.chartData} margin={{ top: 5, right: 20, left: -20, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} />
@@ -241,7 +242,7 @@ export default function DashboardPage() {
                 </ChartContainer>
               ) : (
                 <div className="h-[250px] flex items-center justify-center text-muted-foreground">
-                  {marketOverviewStock ? "Not enough historical data for chart." : "Select a stock or loading data..."}
+                  {isMounted && marketOverviewStock ? "Not enough historical data for chart." : "Loading chart data..."}
                 </div>
               )}
             </CardContent>
@@ -260,7 +261,7 @@ export default function DashboardPage() {
                   The portfolio data displayed below is for demonstration purposes only, using dynamic mock prices.
                 </AlertDescription>
               </Alert>
-              {portfolioData.length > 0 ? (
+              {isMounted && portfolioData.length > 0 ? (
                 <>
                   <div className="overflow-x-auto">
                     <Table>
@@ -321,7 +322,9 @@ export default function DashboardPage() {
                   </div>
                 </>
               ) : (
-                <p className="text-muted-foreground text-center py-4">Loading portfolio data or no positions held.</p>
+                <p className="text-muted-foreground text-center py-4">
+                  {isMounted ? "Loading portfolio data or no positions held." : "Loading..."}
+                </p>
               )}
             </CardContent>
           </Card>
@@ -341,13 +344,13 @@ export default function DashboardPage() {
                   <TabsTrigger value="active" className="flex-1 w-full"><Zap className="mr-1 h-4 w-4" />Active</TabsTrigger>
                 </TabsList>
                 <TabsContent value="gainers" className="mt-4 space-y-3">
-                  {currentMarketMovers.gainers.map(renderMarketMoverCard)}
+                  {isMounted ? currentMarketMovers.gainers.map(renderMarketMoverCard) : <p>Loading...</p>}
                 </TabsContent>
                 <TabsContent value="losers" className="mt-4 space-y-3">
-                  {currentMarketMovers.losers.map(renderMarketMoverCard)}
+                   {isMounted ? currentMarketMovers.losers.map(renderMarketMoverCard) : <p>Loading...</p>}
                 </TabsContent>
                 <TabsContent value="active" className="mt-4 space-y-3">
-                  {currentMarketMovers.active.map(renderMarketMoverCard)}
+                   {isMounted ? currentMarketMovers.active.map(renderMarketMoverCard) : <p>Loading...</p>}
                 </TabsContent>
               </Tabs>
             </CardContent>
@@ -358,19 +361,21 @@ export default function DashboardPage() {
                <CardDescription>Overall sentiment from recent news.</CardDescription>
             </CardHeader>
             <CardContent>
-              <ChartContainer config={chartConfig} className="h-[150px] w-full">
-                <RechartsBarChart data={mockSentimentData} layout="vertical" margin={{left:10, right:10}}>
-                  <CartesianGrid horizontal={false} />
-                  <XAxis type="number" hide />
-                  <YAxis dataKey="name" type="category" tickLine={false} axisLine={false} />
-                  <ChartTooltip cursor={false} content={<ChartTooltipContent hideLabel />} />
-                  <Bar dataKey="value" radius={5}>
-                     {mockSentimentData.map((entry) => (
-                        <Cell key={`cell-${entry.name}`} fill={entry.fill} />
-                      ))}
-                  </Bar>
-                </RechartsBarChart>
-              </ChartContainer>
+              {isMounted ? (
+                <ChartContainer config={chartConfig} className="h-[150px] w-full">
+                  <RechartsBarChart data={mockSentimentData} layout="vertical" margin={{left:10, right:10}}>
+                    <CartesianGrid horizontal={false} />
+                    <XAxis type="number" hide />
+                    <YAxis dataKey="name" type="category" tickLine={false} axisLine={false} />
+                    <ChartTooltip cursor={false} content={<ChartTooltipContent hideLabel />} />
+                    <Bar dataKey="value" radius={5}>
+                      {mockSentimentData.map((entry) => (
+                          <Cell key={`cell-${entry.name}`} fill={entry.fill} />
+                        ))}
+                    </Bar>
+                  </RechartsBarChart>
+                </ChartContainer>
+              ) : <p>Loading chart...</p>}
             </CardContent>
           </Card>
         </div>
@@ -388,11 +393,12 @@ export default function DashboardPage() {
           <CardDescription>Latest headlines impacting the market.</CardDescription>
         </CardHeader>
         <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {mockNews.slice(0, 3).map(article => (
+          {isMounted ? mockNews.slice(0, 3).map(article => (
             <NewsCard key={article.id} article={article} />
-          ))}
+          )) : <p>Loading news...</p>}
         </CardContent>
       </Card>
     </div>
   );
 }
+

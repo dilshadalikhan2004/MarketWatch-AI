@@ -1,56 +1,65 @@
 
 import type { Stock, NewsArticle, MarketMover, SentimentDataPoint, PortfolioPosition } from '@/lib/types';
 import { v4 as uuidv4 } from 'uuid';
-// The fetchRealTimeStockData (polling version) is no longer the primary update mechanism.
-// We keep fetchInitialStockDetails if needed for static data.
-// import { fetchInitialStockDetails } from '@/services/stock-api-service'; 
 
-const generateRandomChartData = (): { month: string; price: number }[] => {
+const generateDeterministicChartData = (basePrice: number): { month: string; price: number }[] => {
   const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  let lastPrice = Math.random() * 200 + 50; // Start with a random base price
-  // Simulate a more realistic historical trend (e.g., general upward trend with volatility)
-  const trendFactor = (Math.random() - 0.3) * 5; // Allow for overall positive or slight negative long-term trend
-  
-  return months.map((month, index) => {
-    // Add some volatility and trend influence
-    lastPrice += (Math.random() - 0.48) * (lastPrice * 0.1) + (trendFactor * (index / months.length));
-    if (lastPrice < 10) lastPrice = 10; // Floor price
-    return { month, price: parseFloat(lastPrice.toFixed(2)) };
-  });
+  // Use a simple, predictable pattern for variety or a completely fixed one
+  const prices = [
+    basePrice * 0.95, basePrice * 0.92, basePrice * 0.90, basePrice * 0.93,
+    basePrice * 0.97, basePrice * 1.00, basePrice * 1.02, basePrice * 1.05,
+    basePrice * 1.03, basePrice * 1.07, basePrice * 1.10, basePrice * 1.08
+  ].map(p => parseFloat(p.toFixed(2)));
+
+  // Ensure we have 12 data points, repeat last if necessary (though above ensures it)
+  const finalPrices = Array(12).fill(0).map((_, i) => prices[i] || prices[prices.length -1] || basePrice);
+
+  return months.map((month, index) => ({ month, price: finalPrices[index] }));
 };
 
 
-const initialStockDetails = (symbol: string, name: string, basePrice: number, dataAiHint: string) => ({
-  symbol,
-  name,
-  price: basePrice, // Initial price, will be updated by WebSocket
-  change: parseFloat(((Math.random() - 0.5) * (basePrice * 0.05)).toFixed(2)), // Initial small random change
-  changePercent: parseFloat((((Math.random() - 0.5) * 0.05)).toFixed(4)), // Initial small random change percent
-  marketCap: formatLargeNumber(basePrice * (Math.random() * 50000000 + 10000000)), // Example market cap
-  volume: formatLargeNumber(Math.floor(Math.random() * 10000000 + 1000000)), // Example volume
-  avgVolume: formatLargeNumber(Math.floor(Math.random() * 15000000 + 2000000)),
-  peRatio: parseFloat((Math.random() * 30 + 10).toFixed(2)), // Example P/E
-  high52Week: parseFloat((basePrice * (1 + Math.random() * 0.3 + 0.1)).toFixed(2)), // ~10-40% above base
-  low52Week: parseFloat((basePrice * (1 - Math.random() * 0.3 - 0.05)).toFixed(2)),  // ~5-35% below base
-  logoUrl: `https://placehold.co/40x40.png`,
-  dataAiHint,
-  chartData: generateRandomChartData(),
-  previousClose: parseFloat((basePrice - ((Math.random() - 0.5) * (basePrice * 0.02))).toFixed(2)) // Store a plausible previous close
-});
+const initialStockDetails = (
+  symbol: string,
+  name: string,
+  basePrice: number,
+  dataAiHint: string,
+  fixedChange: number // Add a parameter for a fixed change
+) => {
+  const previousClose = parseFloat((basePrice - fixedChange).toFixed(2));
+  const changePercent = previousClose !== 0 ? parseFloat((fixedChange / previousClose).toFixed(4)) : 0;
+
+  return {
+    symbol,
+    name,
+    price: basePrice,
+    change: fixedChange,
+    changePercent: changePercent,
+    marketCap: formatLargeNumber(basePrice * (50000000 + (symbol.charCodeAt(0) - 65) * 1000000)), // Deterministic based on symbol
+    volume: formatLargeNumber(1000000 + (symbol.charCodeAt(0) - 65) * 100000), // Deterministic
+    avgVolume: formatLargeNumber(2000000 + (symbol.charCodeAt(0) - 65) * 150000), // Deterministic
+    peRatio: parseFloat((20 + (symbol.charCodeAt(0) - 65) * 0.5).toFixed(2)), // Deterministic
+    high52Week: parseFloat((basePrice * 1.25).toFixed(2)), // Deterministic factor
+    low52Week: parseFloat((basePrice * 0.85).toFixed(2)),  // Deterministic factor
+    logoUrl: `https://placehold.co/40x40.png`,
+    dataAiHint,
+    chartData: generateDeterministicChartData(basePrice),
+    previousClose: previousClose
+  };
+};
 
 
 export const mockStocks: Stock[] = [
-  initialStockDetails('AAPL', 'Apple Inc.', 170.34, 'apple logo'),
-  initialStockDetails('MSFT', 'Microsoft Corp.', 420.72, 'microsoft logo'),
-  initialStockDetails('GOOGL', 'Alphabet Inc. (C)', 152.20, 'google logo'),
-  initialStockDetails('AMZN', 'Amazon.com Inc.', 180.00, 'amazon logo'),
-  initialStockDetails('TSLA', 'Tesla, Inc.', 175.79, 'tesla logo'),
-  initialStockDetails('NVDA', 'NVIDIA Corporation', 900.50, 'nvidia logo'),
+  initialStockDetails('AAPL', 'Apple Inc.', 170.34, 'apple logo', 3.00), // Example: +$3.00 change
+  initialStockDetails('MSFT', 'Microsoft Corp.', 420.72, 'microsoft logo', -1.50), // Example: -$1.50 change
+  initialStockDetails('GOOGL', 'Alphabet Inc. (C)', 152.20, 'google logo', 0.75),
+  initialStockDetails('AMZN', 'Amazon.com Inc.', 180.00, 'amazon logo', 2.10),
+  initialStockDetails('TSLA', 'Tesla, Inc.', 175.79, 'tesla logo', -5.20),
+  initialStockDetails('NVDA', 'NVIDIA Corporation', 900.50, 'nvidia logo', 10.55),
 ];
 
 export const getStockBySymbol = (symbol: string): Stock | undefined => {
   const stock = mockStocks.find(stock => stock.symbol === symbol);
-  return stock ? { ...stock } : undefined;
+  return stock ? { ...stock } : undefined; // Return a copy to avoid direct state mutation if this object is used elsewhere
 };
 
 const newsSummaries = [
@@ -66,44 +75,39 @@ const newsDataAiHints = ["technology", "finance chart", "eco friendly", "factory
 
 export const mockNews: NewsArticle[] = Array.from({ length: 10 }, (_, i) => {
   const date = new Date();
-  date.setDate(date.getDate() - i);
+  date.setDate(date.getDate() - i); // Deterministic date sequence
   const sentimentOptions: Array<'positive' | 'negative' | 'neutral'> = ['positive', 'negative', 'neutral'];
-  const randomSentiment = sentimentOptions[Math.floor(Math.random() * sentimentOptions.length)];
+  // Make sentiment deterministic based on index for consistency
+  const randomSentiment = sentimentOptions[i % sentimentOptions.length];
   
+  let score;
+  switch (randomSentiment) {
+    case 'positive': score = 0.65 + (i % 3) * 0.1; break; // e.g. 0.65, 0.75, 0.85
+    case 'negative': score = -0.65 - (i % 3) * 0.1; break; // e.g. -0.65, -0.75, -0.85
+    case 'neutral': score = 0.0 + ((i % 3) - 1) * 0.05; break; // e.g. -0.05, 0.0, 0.05
+    default: score = 0;
+  }
+
   return {
     id: uuidv4(),
     headline: `Breaking News Story Title ${i + 1} about Market Trends`,
     source: newsSources[i % newsSources.length],
     date: date.toISOString(),
     summary: newsSummaries[i % newsSummaries.length] + ` More details to follow for article ${i + 1}.`,
-    url: '#',
-    imageUrl: `https://placehold.co/600x400.png`,
+    url: '#', // Keep as placeholder or use actual URLs
+    imageUrl: `https://placehold.co/600x400.png`, // Consistent placeholder
     dataAiHint: newsDataAiHints[i % newsDataAiHints.length],
     sentiment: randomSentiment,
-    sentimentScore: Math.random() * (randomSentiment === 'positive' ? 1 : (randomSentiment === 'negative' ? -1 : 0.2) - (randomSentiment === 'negative' ? 0 : (randomSentiment === 'positive' ? 0 : -0.2))),
+    sentimentScore: parseFloat(score.toFixed(2)),
     sentimentReason: `AI analysis suggests this sentiment based on keyword usage and market context for article ${i + 1}.`
   };
 });
 
-// getUpdatedMockStocks is no longer the primary source of updates for WebSocket architecture.
-// It could be repurposed to fetch *initial static data* for all mock stocks if needed,
-// but dynamic updates will come from the WebSocket context.
-// For now, its usage is removed from pages.
-/*
-export async function getUpdatedMockStocks(): Promise<Stock[]> {
-  console.warn("getUpdatedMockStocks (polling) is deprecated in WebSocket mode. Static data is used initially.");
-  // This function would ideally fetch the *initial* state if WebSockets don't provide it,
-  // or be removed if initial state is part of mockStocks directly and WebSockets take over.
-  // For now, it just returns the base mockStocks array.
-  return Promise.resolve(mockStocks.map(stock => ({...stock}))); 
-}
-*/
-
 
 export const mockMarketMovers: { gainers: MarketMover[], losers: MarketMover[], active: MarketMover[] } = {
-  gainers: mockStocks.slice(0,3).map(s => ({...s, type: 'gainer', change: Math.abs(s.change), changePercent: Math.abs(s.changePercent) })).sort((a,b) => b.changePercent - a.changePercent),
-  losers: mockStocks.slice(3,5).map(s => ({...s, type: 'loser', change: -Math.abs(s.change), changePercent: -Math.abs(s.changePercent) })).sort((a,b) => a.changePercent - b.changePercent),
-  active: [...mockStocks].sort((a,b) => parseFloat(b.volume?.replace(/[^0-9.]/g, '') || '0') - parseFloat(a.volume?.replace(/[^0-9.]/g, '') || '0')).slice(0,3).map(s => ({...s, type: 'active'}))
+  gainers: mockStocks.filter(s => s.change > 0).slice(0,3).map(s => ({...s, type: 'gainer' as const })).sort((a,b) => b.changePercent - a.changePercent),
+  losers: mockStocks.filter(s => s.change < 0).slice(0,3).map(s => ({...s, type: 'loser' as const })).sort((a,b) => a.changePercent - b.changePercent),
+  active: [...mockStocks].sort((a,b) => parseFloat(b.volume?.replace(/[^0-9.]/g, '') || '0') - parseFloat(a.volume?.replace(/[^0-9.]/g, '') || '0')).slice(0,3).map(s => ({...s, type: 'active' as const}))
 };
 
 export const mockSentimentData: SentimentDataPoint[] = [
