@@ -7,13 +7,13 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { AreaChart, BarChart3, Newspaper, TrendingUp, TrendingDown, Zap, ArrowRight, AlertCircle, Wallet, RefreshCw } from 'lucide-react';
+import { AreaChart, BarChart3, Newspaper, TrendingUp, TrendingDown, Zap, ArrowRight, AlertCircle, Wallet, RefreshCw, Cell } from 'lucide-react';
 import { MinimalStockCard } from '@/components/common/StockCard';
 import { NewsCard } from '@/components/common/NewsCard';
-import { mockNews, mockMarketMovers as initialMarketMovers, mockSentimentData, mockPortfolio as basePortfolio, mockStocks } from '@/lib/mock-data';
+import { generateMockNews, mockMarketMovers as initialMarketMovers, mockSentimentData, mockPortfolio as basePortfolio, mockStocks } from '@/lib/mock-data';
 import type { Stock, NewsArticle, MarketMover, SentimentDataPoint, PortfolioPosition as PortfolioPositionType } from '@/lib/types';
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
-import { Bar, BarChart as RechartsBarChart, CartesianGrid, XAxis, YAxis, Line, LineChart as RechartsLineChart, Cell } from 'recharts';
+import { Bar, BarChart as RechartsBarChart, CartesianGrid, XAxis, YAxis, Line, LineChart as RechartsLineChart } from 'recharts';
 import { formatCurrency, formatPercentage } from '@/lib/formatters';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
@@ -40,10 +40,10 @@ interface DisplayPortfolioPosition extends PortfolioPositionType {
 export default function DashboardPage() {
   const { stockData: realtimeStockData, subscribeToSymbol, unsubscribeFromSymbol, refreshStockData, isLoading: isLoadingRealtime, error: dataError } = useRealtimeStockData();
   const [isMounted, setIsMounted] = useState(false);
+  const [recentNews, setRecentNews] = useState<NewsArticle[]>([]);
 
   const marketOverviewStockSymbol = useMemo(() => mockStocks.length > 0 ? mockStocks[0].symbol : '', []);
 
-  // Symbols for which data will be fetched by the "Refresh Data" button
   const allDashboardSymbolsToRefresh = useMemo(() => Array.from(new Set([
     marketOverviewStockSymbol,
     ...basePortfolio.map(p => p.symbol),
@@ -55,13 +55,13 @@ export default function DashboardPage() {
 
   useEffect(() => {
     setIsMounted(true);
-    // Subscribe to all relevant symbols for potential updates
+    setRecentNews(generateMockNews(6)); // Generate news on mount
+
     allDashboardSymbolsToRefresh.forEach(subscribeToSymbol);
 
-    // Initial automatic fetch ONLY for the market overview stock
     if (marketOverviewStockSymbol) {
         console.log('[DashboardPage] Initial auto-fetch for market overview stock:', marketOverviewStockSymbol);
-        refreshStockData([marketOverviewStockSymbol]);
+        refreshStockData([marketOverviewStockSymbol]); // Fetch only for the main overview stock initially
     }
 
     return () => {
@@ -74,7 +74,7 @@ export default function DashboardPage() {
     if (!marketOverviewStockSymbol) return null;
     const baseStock = mockStocks.find(s => s.symbol === marketOverviewStockSymbol);
     const rtData = realtimeStockData[marketOverviewStockSymbol];
-    if (isMounted && rtData && rtData.price !== undefined) { // Check if rtData has price
+    if (isMounted && rtData && rtData.price !== undefined) {
       return { ...baseStock, ...rtData, name: baseStock?.name || rtData.symbol, logoUrl: baseStock?.logoUrl, dataAiHint: baseStock?.dataAiHint, chartData: rtData.chartData || baseStock?.chartData || [] } as Stock;
     }
     return baseStock || null;
@@ -123,7 +123,7 @@ export default function DashboardPage() {
         if (isMounted && rtData && rtData.price !== undefined) {
           return { ...baseMoverInfo, ...rtData, type: mover.type } as MarketMover;
         }
-        return { ...baseMoverInfo, ...mover } as MarketMover; // Fallback to mover from initialMarketMovers or baseMock
+        return { ...baseMoverInfo, ...mover } as MarketMover; 
       })
     };
     const gainers = updateMoverList(initialMarketMovers.gainers).sort((a,b) => (b.changePercent || 0) - (a.changePercent || 0));
@@ -138,7 +138,6 @@ export default function DashboardPage() {
 
 
   const renderMarketMoverCard = (mover: MarketMover) => {
-    // Ensure mover always has some base data even if rtData is not fully populated yet
     const baseStock = mockStocks.find(s => s.symbol === mover.symbol) || mover;
     const rtData = realtimeStockData[mover.symbol];
     const displayData = (isMounted && rtData && rtData.price !== undefined) 
@@ -153,6 +152,7 @@ export default function DashboardPage() {
         console.log('[DashboardPage] Manual refresh triggered for symbols:', allDashboardSymbolsToRefresh);
         refreshStockData(allDashboardSymbolsToRefresh);
     }
+    setRecentNews(generateMockNews(6)); // Also refresh news dates on manual refresh
   };
   
   if (!isMounted && isLoadingRealtime) {
@@ -187,7 +187,7 @@ export default function DashboardPage() {
         <Alert variant="destructive" className="max-w-full">
             <AlertCircle className="h-4 w-4" />
             <AlertTitle>Data Fetching Error</AlertTitle>
-            <AlertDescription>{dataError} Some data might be outdated or unavailable. This could be due to API limits with Alpha Vantage.</AlertDescription>
+            <AlertDescription>{dataError}</AlertDescription>
         </Alert>
       )}
 
@@ -212,7 +212,7 @@ export default function DashboardPage() {
                   ) : (
                     <span className="ml-1">(Mock data or loading...)</span> 
                   )}
-                   {isLoadingRealtime && allDashboardSymbolsToRefresh.includes(marketOverviewStockSymbol) && <span className="ml-2 text-xs">(Updating...)</span>}
+                   {isLoadingRealtime && allDashboardSymbolsToRefresh.includes(marketOverviewStockSymbol || '') && <span className="ml-2 text-xs">(Updating...)</span>}
                 </CardDescription>
               )}
             </CardHeader>
@@ -384,15 +384,14 @@ export default function DashboardPage() {
               <Link href="/sentiment">View All News <ArrowRight className="ml-2 h-4 w-4" /></Link>
             </Button>
           </CardTitle>
-          <CardDescription>Latest headlines impacting the market.</CardDescription>
+          <CardDescription>Latest headlines impacting the market. Dates refresh daily.</CardDescription>
         </CardHeader>
         <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {isMounted ? mockNews.slice(0, 3).map(article => (
+          {isMounted && recentNews.length > 0 ? recentNews.slice(0, 3).map(article => (
             <NewsCard key={article.id} article={article} />
-          )) : <p>Loading news...</p>}
+          )) : <p className="text-muted-foreground text-center py-4">Loading news...</p>}
         </CardContent>
       </Card>
     </div>
   );
 }
-

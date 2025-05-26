@@ -8,7 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Sparkles, Loader2, TrendingUp, TrendingDown, MinusCircle } from 'lucide-react';
 import { analyzeNewsSentimentAction } from '@/lib/actions/sentiment';
 import type { AnalyzeSentimentOutput } from '@/ai/flows/sentiment-analysis';
-import { mockNews } from '@/lib/mock-data';
+import { generateMockNews } from '@/lib/mock-data';
 import type { NewsArticle } from '@/lib/types';
 import { NewsCard } from '@/components/common/NewsCard';
 import { Badge } from '@/components/ui/badge';
@@ -23,13 +23,16 @@ export default function SentimentPage() {
   const [recentNewsWithSentiment, setRecentNewsWithSentiment] = useState<NewsArticle[]>([]);
 
   useEffect(() => {
-    // Simulate fetching news and their initial sentiment (could be from AI in a real app)
-    setRecentNewsWithSentiment(mockNews.slice(0, 6));
+    setRecentNewsWithSentiment(generateMockNews(6)); // Generate news on mount
   }, []);
 
   const handleAnalyze = async () => {
     if (!textToAnalyze.trim()) {
       setError("Please enter some text to analyze.");
+      return;
+    }
+    if (textToAnalyze.length < 10) {
+      setError("Text must be at least 10 characters long for analysis.");
       return;
     }
     setIsLoading(true);
@@ -61,7 +64,7 @@ export default function SentimentPage() {
     <div className="w-full">
       <PageHeader
         title="Sentiment Analysis"
-        description="Analyze market sentiment from news articles or custom text."
+        description="Analyze market sentiment from news articles or custom text. Dates refresh daily."
         icon={Sparkles}
       />
 
@@ -110,7 +113,7 @@ export default function SentimentPage() {
           <Card className="shadow-lg">
             <CardHeader>
               <CardTitle>Recent News Sentiment</CardTitle>
-              <CardDescription>Sentiment analysis for recent market news.</CardDescription>
+              <CardDescription>Sentiment analysis for recent market news. Dates refresh daily.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               {recentNewsWithSentiment.length > 0 ? (

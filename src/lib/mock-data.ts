@@ -23,7 +23,7 @@ const initialStockDetails = (
   name: string,
   basePrice: number,
   dataAiHint: string,
-  fixedChange: number // Add a parameter for a fixed change
+  fixedChange: number
 ) => {
   const previousClose = parseFloat((basePrice - fixedChange).toFixed(2));
   const changePercent = previousClose !== 0 ? parseFloat((fixedChange / previousClose).toFixed(4)) : 0;
@@ -34,12 +34,12 @@ const initialStockDetails = (
     price: basePrice,
     change: fixedChange,
     changePercent: changePercent,
-    marketCap: formatLargeNumber(basePrice * (50000000 + (symbol.charCodeAt(0) - 65) * 1000000)), // Deterministic based on symbol
-    volume: formatLargeNumber(1000000 + (symbol.charCodeAt(0) - 65) * 100000), // Deterministic
-    avgVolume: formatLargeNumber(2000000 + (symbol.charCodeAt(0) - 65) * 150000), // Deterministic
-    peRatio: parseFloat((20 + (symbol.charCodeAt(0) - 65) * 0.5).toFixed(2)), // Deterministic
-    high52Week: parseFloat((basePrice * 1.25).toFixed(2)), // Deterministic factor
-    low52Week: parseFloat((basePrice * 0.85).toFixed(2)),  // Deterministic factor
+    marketCap: formatLargeNumber(basePrice * (50000000 + (symbol.charCodeAt(0) - 65) * 1000000)),
+    volume: formatLargeNumber(1000000 + (symbol.charCodeAt(0) - 65) * 100000),
+    avgVolume: formatLargeNumber(2000000 + (symbol.charCodeAt(0) - 65) * 150000),
+    peRatio: parseFloat((20 + (symbol.charCodeAt(0) - 65) * 0.5).toFixed(2)),
+    high52Week: parseFloat((basePrice * 1.25).toFixed(2)),
+    low52Week: parseFloat((basePrice * 0.85).toFixed(2)),
     logoUrl: `https://placehold.co/40x40.png`,
     dataAiHint,
     chartData: generateDeterministicChartData(basePrice),
@@ -49,8 +49,8 @@ const initialStockDetails = (
 
 
 export const mockStocks: Stock[] = [
-  initialStockDetails('AAPL', 'Apple Inc.', 170.34, 'apple logo', 3.00), // Example: +$3.00 change
-  initialStockDetails('MSFT', 'Microsoft Corp.', 420.72, 'microsoft logo', -1.50), // Example: -$1.50 change
+  initialStockDetails('AAPL', 'Apple Inc.', 170.34, 'apple logo', 3.00),
+  initialStockDetails('MSFT', 'Microsoft Corp.', 420.72, 'microsoft logo', -1.50),
   initialStockDetails('GOOGL', 'Alphabet Inc. (C)', 152.20, 'google logo', 0.75),
   initialStockDetails('AMZN', 'Amazon.com Inc.', 180.00, 'amazon logo', 2.10),
   initialStockDetails('TSLA', 'Tesla, Inc.', 175.79, 'tesla logo', -5.20),
@@ -59,49 +59,73 @@ export const mockStocks: Stock[] = [
 
 export const getStockBySymbol = (symbol: string): Stock | undefined => {
   const stock = mockStocks.find(stock => stock.symbol === symbol);
-  return stock ? { ...stock } : undefined; // Return a copy to avoid direct state mutation if this object is used elsewhere
+  return stock ? { ...stock } : undefined;
 };
 
-const newsSummaries = [
-  "Analysts are bullish on the tech sector following recent innovations.",
-  "New government regulations could impact energy stock prices next quarter.",
-  "Consumer spending habits show a shift towards sustainable products.",
-  "Global supply chain disruptions continue to pose challenges for manufacturers.",
-  "A major tech company just announced a breakthrough in AI research."
+const newsHeadlinesTemplates = [
+  "Breaking: Market Hits Record High Amidst Tech Rally",
+  "Analysis: Future of Renewable Energy Stocks Looks Bright",
+  "Global Economy Shows Signs of Slowdown, Experts Warn",
+  "New Innovations in AI Could Disrupt Major Industries",
+  "Understanding the Impact of Inflation on Your Portfolio",
+  "Crypto Market Volatility: What Investors Need to Know",
+  "Real Estate Trends: Is Now a Good Time to Buy or Sell?",
+  "E-commerce Growth Continues to Outpace Traditional Retail",
+  "The Rise of Sustainable Investing: Opportunities and Risks",
+  "Geopolitical Tensions and Their Effect on Oil Prices"
 ];
 
-const newsSources = ["Tech Chronicle", "Global Financial Times", "Eco Trends Magazine", "Industry Watch", "AI Today"];
-const newsDataAiHints = ["technology", "finance chart", "eco friendly", "factory", "artificial intelligence"];
+const newsSummariesTemplates = [
+  "The stock market surged today, driven by strong earnings reports from leading technology companies and positive economic indicators.",
+  "Investment in renewable energy is expected to grow significantly, with new policies and technologies paving the way for a greener future.",
+  "Economists are expressing concerns about a potential global economic slowdown, citing supply chain issues and rising interest rates.",
+  "Artificial intelligence is rapidly evolving, with new breakthroughs poised to transform sectors from healthcare to finance and transportation.",
+  "Inflation can erode purchasing power and investment returns. We explore strategies to protect your wealth in an inflationary environment.",
+  "The cryptocurrency market remains highly volatile, offering both significant opportunities and substantial risks for savvy investors.",
+  "Current real estate market conditions present a mixed bag for buyers and sellers, with regional variations playing a key role.",
+  "Online retail sales continue their upward trajectory, challenging traditional brick-and-mortar stores to adapt or perish.",
+  "Sustainable and ESG (Environmental, Social, and Governance) investing is gaining traction, but requires careful due diligence.",
+  "Ongoing international conflicts and political instability are creating uncertainty in global energy markets, particularly for oil."
+];
 
-export const mockNews: NewsArticle[] = Array.from({ length: 10 }, (_, i) => {
-  const date = new Date();
-  date.setDate(date.getDate() - i); // Deterministic date sequence
-  const sentimentOptions: Array<'positive' | 'negative' | 'neutral'> = ['positive', 'negative', 'neutral'];
-  // Make sentiment deterministic based on index for consistency
-  const randomSentiment = sentimentOptions[i % sentimentOptions.length];
-  
-  let score;
-  switch (randomSentiment) {
-    case 'positive': score = 0.65 + (i % 3) * 0.1; break; // e.g. 0.65, 0.75, 0.85
-    case 'negative': score = -0.65 - (i % 3) * 0.1; break; // e.g. -0.65, -0.75, -0.85
-    case 'neutral': score = 0.0 + ((i % 3) - 1) * 0.05; break; // e.g. -0.05, 0.0, 0.05
-    default: score = 0;
+const newsSources = ["Market Insider", "Global Financial Times", "Eco Trends Magazine", "Industry Watch Daily", "FutureTech AI News"];
+const newsDataAiHints = ["stock chart", "solar panel", "graphs statistics", "artificial intelligence", "money coins"];
+
+export const generateMockNews = (count: number = 10): NewsArticle[] => {
+  const articles: NewsArticle[] = [];
+  const today = new Date();
+
+  for (let i = 0; i < count; i++) {
+    const articleDate = new Date(today);
+    articleDate.setDate(today.getDate() - i); // Dates go backwards from today
+
+    const sentimentOptions: Array<'positive' | 'negative' | 'neutral'> = ['positive', 'negative', 'neutral'];
+    const randomSentiment = sentimentOptions[i % sentimentOptions.length];
+    
+    let score;
+    switch (randomSentiment) {
+      case 'positive': score = 0.65 + (i % 3) * 0.1; break;
+      case 'negative': score = -0.65 - (i % 3) * 0.1; break;
+      case 'neutral': score = 0.0 + ((i % 3) - 1) * 0.05; break;
+      default: score = 0;
+    }
+
+    articles.push({
+      id: uuidv4(),
+      headline: `${newsHeadlinesTemplates[i % newsHeadlinesTemplates.length]} (Day ${i + 1})`,
+      source: newsSources[i % newsSources.length],
+      date: articleDate.toISOString(),
+      summary: `${newsSummariesTemplates[i % newsSummariesTemplates.length]} This is article ${i + 1}.`,
+      url: '#',
+      imageUrl: `https://placehold.co/600x400.png`,
+      dataAiHint: newsDataAiHints[i % newsDataAiHints.length],
+      sentiment: randomSentiment,
+      sentimentScore: parseFloat(score.toFixed(2)),
+      sentimentReason: `AI analysis suggests this sentiment based on keyword usage and market context for article ${i + 1}.`
+    });
   }
-
-  return {
-    id: uuidv4(),
-    headline: `Breaking News Story Title ${i + 1} about Market Trends`,
-    source: newsSources[i % newsSources.length],
-    date: date.toISOString(),
-    summary: newsSummaries[i % newsSummaries.length] + ` More details to follow for article ${i + 1}.`,
-    url: '#', // Keep as placeholder or use actual URLs
-    imageUrl: `https://placehold.co/600x400.png`, // Consistent placeholder
-    dataAiHint: newsDataAiHints[i % newsDataAiHints.length],
-    sentiment: randomSentiment,
-    sentimentScore: parseFloat(score.toFixed(2)),
-    sentimentReason: `AI analysis suggests this sentiment based on keyword usage and market context for article ${i + 1}.`
-  };
-});
+  return articles;
+};
 
 
 export const mockMarketMovers: { gainers: MarketMover[], losers: MarketMover[], active: MarketMover[] } = {
