@@ -4,7 +4,6 @@ import React from 'react';
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  SidebarProvider,
   Sidebar,
   SidebarHeader,
   SidebarContent,
@@ -13,8 +12,8 @@ import {
   SidebarMenuItem,
   SidebarMenuButton,
   SidebarTrigger,
-  SidebarInset, // Ensure this is exported from sidebar or ui/sidebar
-} from "@/components/ui/sidebar"; // Assuming SidebarInset would be here or in ui/sidebar
+  // SidebarInset is typically used in the layout file, not directly here
+} from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -28,12 +27,14 @@ import {
   Settings,
   LogOut,
   PanelLeft,
+  Briefcase, // New icon for Portfolio
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/watchlist", label: "Watchlist", icon: ListChecks },
+  { href: "/portfolio", label: "My Portfolio", icon: Briefcase }, // New Portfolio Link
   { href: "/alerts", label: "Alerts", icon: BellRing },
   { href: "/sentiment", label: "Sentiment Analysis", icon: Sparkles },
   { href: "/assistant", label: "AI Assistant", icon: Bot },
@@ -105,6 +106,23 @@ export function AppSidebar() {
   );
 }
 
-// Export SidebarInset if it's defined in ui/sidebar.tsx, otherwise, it might need to be created or imported differently.
-// For this example, assuming SidebarInset is part of ui/sidebar or needs to be defined:
-export { SidebarInset };
+// Ensure SidebarInset is correctly exported or handled in the layout.
+// It's usually part of the ui/sidebar.tsx and then re-exported or used directly in layout.
+// For this component, we don't directly export SidebarInset.
+// It's typically used like this:
+// import { SidebarInset } from '@/components/ui/sidebar';
+// Or if app-sidebar.tsx exports it (less common pattern for ui/sidebar.tsx):
+// export { SidebarInset } from '@/components/ui/sidebar';
+// This file is already structured to be the sidebar itself.
+// Re-exporting SidebarInset from here is only needed if src/app/(app)/layout.tsx specifically imports it from app-sidebar.tsx.
+// Let's assume it's imported from "@/components/ui/sidebar" in the layout.
+
+// If SidebarInset is indeed part of your custom ui/sidebar.tsx and exported from there,
+// then it's fine. If it's supposed to be a specific component defined elsewhere,
+// make sure the imports align.
+
+// Based on the error log and files provided, SidebarInset is part of ui/sidebar.tsx.
+// The AppLayout in `src/app/(app)/layout.tsx` does:
+// import { AppSidebar, SidebarInset } from '@/components/app-sidebar';
+// This means app-sidebar.tsx *must* export SidebarInset.
+export { SidebarInset } from "@/components/ui/sidebar"; // Add this re-export

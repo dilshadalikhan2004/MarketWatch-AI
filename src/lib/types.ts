@@ -9,7 +9,6 @@ export type Stock = {
   volume?: string;
   avgVolume?: string;
   peRatio?: number | string;
-  eps?: number | string;
   high52Week?: number;
   low52Week?: number;
   logoUrl?: string;
@@ -40,7 +39,7 @@ export type Alert = {
   notes?: string;
   createdAt: string; // ISO string
   triggered?: boolean;
-  lastNotifiedPrice?: number; 
+  lastNotifiedPrice?: number;
 };
 
 export type WatchlistItem = {
@@ -49,12 +48,23 @@ export type WatchlistItem = {
   notes?: string;
 };
 
+// For the sample portfolio snapshot on the dashboard
 export type PortfolioPosition = {
   symbol: string;
   shares: number;
   avgPurchasePrice: number;
   currentPrice?: number; // To be fetched
 };
+
+// For the user-configurable simulated portfolio
+export type UserPortfolioPosition = {
+  id: string; // Unique ID for each position
+  symbol: string;
+  shares: number;
+  avgPurchasePrice: number;
+  addedAt: string; // ISO string
+};
+
 
 export type MarketMover = Stock & {
   type: 'gainer' | 'loser' | 'active';
