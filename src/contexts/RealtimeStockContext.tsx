@@ -44,10 +44,11 @@ export const RealtimeStockProvider: React.FC<RealtimeStockProviderProps> = ({ ch
 
   useEffect(() => {
     console.log('[RealtimeStockContext] useEffect triggered. Subscribed symbols:', Array.from(subscribedSymbols), 'API Key available:', !!apiKey);
+    console.log('[RealtimeStockContext] API Key for WebSocket:', apiKey ? 'Loaded' : 'NOT LOADED - Check .env and restart server!');
 
     if (!apiKey) {
-      const errorMessage = "CRITICAL: Polygon API key (NEXT_PUBLIC_POLYGON_API_KEY) is not configured or not loaded. Real-time updates are disabled.";
-      console.error(errorMessage, "Please ensure the key is in your .env file and the Next.js server was restarted.");
+      const errorMessage = "CRITICAL: Polygon API key (NEXT_PUBLIC_POLYGON_API_KEY) is not configured. Real-time updates are disabled. Please ensure the key is in your .env file and the Next.js server was restarted.";
+      console.error(errorMessage);
       setError(errorMessage);
       setIsLoading(false);
       setIsAuthenticated(false);
@@ -55,23 +56,23 @@ export const RealtimeStockProvider: React.FC<RealtimeStockProviderProps> = ({ ch
     }
 
     if (subscribedSymbols.size === 0) {
-      console.log('[RealtimeStockContext] No symbols to subscribe to. WebSocket will not connect yet.');
-      setIsLoading(false); // Not loading if there's nothing to do
-      setIsAuthenticated(false);
-      // Optionally, you could close an existing ws here if desired, but new connection logic handles it
+      console.log('[RealtimeStockContext] No symbols to subscribe to. WebSocket will not connect if not already open.');
+      // Don't set isLoading to false here if ws might already be open and just needs new subscriptions
+      // Or, if ws is not open, it's fine, it won't attempt to connect.
       return;
     }
 
     setIsLoading(true);
     setError(null);
-    setIsAuthenticated(false); // Reset auth state on new connection attempt
+    // setIsAuthenticated(false); // Don't reset auth status if ws is already open and authenticated
 
-    console.log(`[RealtimeStockContext] Attempting to connect to WebSocket for symbols: ${Array.from(subscribedSymbols).join(', ')}`);
+    console.log(`[RealtimeStockContext] Attempting to connect/subscribe to WebSocket for symbols: ${Array.from(subscribedSymbols).join(', ')}`);
     const ws = new WebSocket('wss://socket.polygon.io/stocks');
 
     ws.onopen = () => {
-      console.log('[RealtimeStockContext] WebSocket connected to Polygon.io. Sending auth...');
+      console.log('[RealtimeStockContext] WebSocket connected to Polygon.io.');
       ws.send(JSON.stringify({ action: 'auth', params: apiKey }));
+      console.log('[RealtimeStockContext] Sent auth request with key:', apiKey ? 'Key Present' : 'Key Missing/Undefined');
     };
 
     ws.onmessage = (event) => {
@@ -84,7 +85,6 @@ export const RealtimeStockProvider: React.FC<RealtimeStockProviderProps> = ({ ch
             if (msg.status === 'auth_success') {
               setIsAuthenticated(true);
               console.log('[RealtimeStockContext] WebSocket authentication successful.');
-              // Now subscribe to symbols
               const symbolsToSubscribeString = Array.from(subscribedSymbols).map(s => `AM.${s}`).join(',');
               if (symbolsToSubscribeString) {
                 ws.send(JSON.stringify({ action: 'subscribe', params: symbolsToSubscribeString }));
@@ -93,17 +93,16 @@ export const RealtimeStockProvider: React.FC<RealtimeStockProviderProps> = ({ ch
                 console.log('[RealtimeStockContext] Authenticated, but no symbols currently in subscribedSymbols set to send.');
               }
             } else if (msg.status === 'auth_failed') {
-              setError('Polygon WebSocket authentication failed. Please check your API key, subscription, or network connection.');
+              setError('Polygon WebSocket authentication failed. Please check your API key, subscription plan, and ensure the key is active for Stocks WebSockets on the Polygon.io dashboard.');
               setIsAuthenticated(false);
               setIsLoading(false);
-              ws.close(); // Close connection on auth failure
+              ws.close();
             } else if (msg.status === 'success' && msg.message?.startsWith('subscribed to')) {
               console.log(`[RealtimeStockContext] Successfully subscribed to: ${msg.message}`);
-              setIsLoading(false); // Consider loading finished once subscriptions are confirmed
+              setIsLoading(false); 
             } else if (msg.status === 'error') {
               console.error(`[RealtimeStockContext] Polygon subscription error: ${msg.message}`);
-              setError(`Polygon subscription error: ${msg.message}`);
-              // Decide if we should set isLoading to false or attempt to reconnect/handle
+              setError(`Polygon subscription error: ${msg.message}. This might be due to an invalid symbol or an issue with your subscription.`);
             }
           } else if (msg.sym && msg.ev === 'AM') { // Aggregate Minute data
             const symbol = msg.sym;
@@ -112,14 +111,20 @@ export const RealtimeStockProvider: React.FC<RealtimeStockProviderProps> = ({ ch
               const baseStockInfo = mockStocks.find(s => s.symbol === symbol);
               const currentStock = prevData[symbol] || baseStockInfo || { symbol, name: symbol, price: 0, change: 0, changePercent: 0, previousClose: 0, volume: "0" };
               
-              const newPrice = msg.c; // Closing price for the minute aggregate
-              // Use open of minute 'msg.o' or previous day's close if available.
-              // Fallback chain for previousClose to calculate change.
-              const previousCloseToUse = currentStock.previousClose || (baseStockInfo?.previousClose) || msg.o || newPrice;
+              const newPrice = msg.c; 
+              const previousCloseToUse = currentStock.previousClose || msg.o || newPrice;
 
               const change = newPrice - previousCloseToUse;
               const changePercent = previousCloseToUse !== 0 ? (change / previousCloseToUse) : 0;
-              const newDailyVolume = (currentStock.dailyVolume || 0) + (msg.v || 0);
+              
+              // Accumulate volume: Polygon AM event 'v' is volume for *that minute*.
+              // We need to decide if we want to show minute volume or cumulative daily volume.
+              // For now, let's assume msg.v is the new total volume for simplicity,
+              // or adjust if we want to show minute volume.
+              // A more robust solution would be to fetch daily open/close/volume via REST once
+              // and then apply deltas, or use Polygon's daily aggregate messages if available.
+              // For this example, we treat 'v' as the volume for this update interval.
+              const newDailyVolume = (currentStock.dailyVolume || 0) + (msg.v || 0); // Example of accumulating if msg.v is interval volume
 
 
               const updatedStock: RealtimeStockData = {
@@ -128,13 +133,13 @@ export const RealtimeStockProvider: React.FC<RealtimeStockProviderProps> = ({ ch
                 logoUrl: currentStock.logoUrl || baseStockInfo?.logoUrl,
                 dataAiHint: currentStock.dataAiHint || baseStockInfo?.dataAiHint,
                 price: newPrice,
-                lastPrice: newPrice,
+                lastPrice: newPrice, // For clarity, lastPrice is the most recent price
                 change: parseFloat(change.toFixed(2)),
                 changePercent: parseFloat(changePercent.toFixed(4)),
-                volume: newDailyVolume.toString(), // Displaying cumulative volume
-                dailyVolume: newDailyVolume,
-                timestamp: msg.s || Date.now(), // Start time of the aggregate window
-                previousClose: previousCloseToUse, // Persist the determined previous close
+                volume: (msg.v || currentStock.volume || "0").toString(), // Displaying minute volume for this update
+                dailyVolume: newDailyVolume, // Or msg.v if 'v' is total daily
+                timestamp: msg.s || Date.now(), 
+                previousClose: previousCloseToUse, 
                 chartData: currentStock.chartData || baseStockInfo?.chartData || [],
               };
               console.log(`[RealtimeStockContext] Updating state for ${symbol} with:`, updatedStock);
@@ -143,8 +148,6 @@ export const RealtimeStockProvider: React.FC<RealtimeStockProviderProps> = ({ ch
                 [symbol]: updatedStock,
               };
             });
-            // Potentially set isLoading to false here if it's still true,
-            // once first data message is received and processed for any symbol.
             if (isLoading) setIsLoading(false);
 
           } else {
@@ -158,7 +161,7 @@ export const RealtimeStockProvider: React.FC<RealtimeStockProviderProps> = ({ ch
 
     ws.onerror = (errEvent) => {
       console.error('[RealtimeStockContext] WebSocket error:', errEvent);
-      setError('WebSocket connection error. Real-time updates may be unavailable.');
+      setError('WebSocket connection error. Real-time updates may be unavailable. Check browser console for details.');
       setIsLoading(false);
       setIsAuthenticated(false);
     };
@@ -166,23 +169,23 @@ export const RealtimeStockProvider: React.FC<RealtimeStockProviderProps> = ({ ch
     ws.onclose = (event) => {
       console.log(`[RealtimeStockContext] WebSocket disconnected from Polygon.io. Code: ${event.code}, Reason: '${event.reason}', Clean: ${event.wasClean}`);
       setIsLoading(false);
-      setIsAuthenticated(false);
-      if (!event.wasClean && subscribedSymbols.size > 0) { // Only set error if not a clean close and there were subscriptions
-         setError('WebSocket connection closed unexpectedly. Real-time updates stopped.');
+      // setIsAuthenticated(false); // Keep auth status if it was a brief disconnect and might reconnect
+      if (!event.wasClean && subscribedSymbols.size > 0) {
+         setError('WebSocket connection closed unexpectedly. Attempting to reconnect if needed or check logs.');
       }
     };
 
     return () => {
       console.log('[RealtimeStockContext] useEffect cleanup: Closing WebSocket.');
       ws.close();
-      setIsLoading(false); // Ensure loading is false on cleanup
-      setIsAuthenticated(false);
+      // setIsLoading(false); // Avoid race conditions if re-connecting quickly
+      // setIsAuthenticated(false);
     };
   }, [subscribedSymbols, apiKey]); // apiKey is stable after init, subscribedSymbols drives changes
 
   const subscribeToSymbol = useCallback((symbol: string) => {
     setSubscribedSymbols(prev => {
-      if (prev.has(symbol)) return prev;
+      if (prev.has(symbol)) return prev; // Already subscribed or queued
       const newSet = new Set(prev);
       newSet.add(symbol);
       console.log('[RealtimeStockContext] Queued for subscription:', symbol, 'New set:', Array.from(newSet));
@@ -196,9 +199,7 @@ export const RealtimeStockProvider: React.FC<RealtimeStockProviderProps> = ({ ch
       if (newSet.delete(symbol)) {
         console.log('[RealtimeStockContext] Queued for unsubscription:', symbol, 'New set:', Array.from(newSet));
         // The main useEffect will handle sending unsubscribe if ws is active and symbol is removed
-        // However, Polygon's model is often just close and reopen with new subscriptions.
-        // For explicit unsubscribe, one would need ws.send({"action":"unsubscribe", ...}) if ws is open.
-        // Current model: change in subscribedSymbols re-establishes connection with new subs.
+        // Or, it will close and reopen connection with new set of subscriptions.
       }
       return newSet;
     });
