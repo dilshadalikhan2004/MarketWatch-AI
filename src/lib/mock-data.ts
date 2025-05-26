@@ -1,6 +1,7 @@
 
 import type { Stock, NewsArticle, MarketMover, SentimentDataPoint, PortfolioPosition } from '@/lib/types';
 import { v4 as uuidv4 } from 'uuid';
+import { fetchRealTimeStockData } from '@/services/stock-api-service'; // Import the new service
 
 const generateRandomChartData = (): { month: string; price: number }[] => {
   const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -88,7 +89,9 @@ export const mockStocks: Stock[] = [
 ];
 
 export const getStockBySymbol = (symbol: string): Stock | undefined => {
-  return mockStocks.find(stock => stock.symbol === symbol);
+  // Return a copy to prevent direct mutation of mockStocks if needed elsewhere
+  const stock = mockStocks.find(stock => stock.symbol === symbol);
+  return stock ? { ...stock } : undefined;
 };
 
 const newsSummaries = [
@@ -123,33 +126,23 @@ export const mockNews: NewsArticle[] = Array.from({ length: 10 }, (_, i) => {
   };
 });
 
-// Function to simulate stock price updates
-export const getUpdatedMockStocks = (): Stock[] => {
-  return mockStocks.map(stock => {
-    const changeFactor = (Math.random() - 0.5) * 0.05; // Max 5% change up or down
-    const newPrice = stock.price * (1 + changeFactor);
-    const newChange = newPrice - stock.price;
-    const newChangePercent = newChange / stock.price;
-    
-    // Update chart data to reflect the new price trend, ensuring the last point matches current price
-    const updatedChartData = stock.chartData ? stock.chartData.map((d, index, arr) => {
-      if (index === arr.length - 1) { // Last data point
-        return {...d, price: parseFloat(newPrice.toFixed(2)) };
+// Function to simulate stock price updates by "fetching" from our (mock) API service
+export async function getUpdatedMockStocks(): Promise<Stock[]> {
+  const updatedStocks = await Promise.all(
+    mockStocks.map(async (stock) => {
+      const realTimeData = await fetchRealTimeStockData(stock.symbol);
+      if (realTimeData) {
+        // Merge fetched data. Prioritize fetched data for dynamic fields.
+        return {
+          ...stock, // Keep static data like name, logo, initial chartData
+          ...realTimeData, // Overwrite with new price, change, volume, marketCap
+        };
       }
-      // For other points, apply a smaller random fluctuation
-      return {...d, price: parseFloat(Math.max(10, d.price * (1 + (Math.random() - 0.5) * 0.02)).toFixed(2))};
-    }) : generateRandomChartData();
-
-
-    return {
-      ...stock,
-      price: parseFloat(newPrice.toFixed(2)),
-      change: parseFloat(newChange.toFixed(2)),
-      changePercent: parseFloat(newChangePercent.toFixed(4)),
-      chartData: updatedChartData,
-    };
-  });
-};
+      return stock; // Return original if fetch failed or no data
+    })
+  );
+  return updatedStocks;
+}
 
 export const mockMarketMovers: { gainers: MarketMover[], losers: MarketMover[], active: MarketMover[] } = {
   gainers: mockStocks.slice(0,3).map(s => ({...s, type: 'gainer', change: Math.abs(s.change), changePercent: Math.abs(s.changePercent) })).sort((a,b) => b.changePercent - a.changePercent),

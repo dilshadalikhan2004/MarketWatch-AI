@@ -7,11 +7,11 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { LineChart as LucideLineChart, Search, PlusCircle, Trash2, TrendingUp, TrendingDown } from 'lucide-react';
-import { getUpdatedMockStocks, mockStocks } from '@/lib/mock-data';
+import { getUpdatedMockStocks, mockStocks as initialMockStocks } from '@/lib/mock-data';
 import type { Stock } from '@/lib/types';
 import { formatCurrency, formatPercentage } from '@/lib/formatters';
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
-import { LineChart, Line, CartesianGrid, XAxis, YAxis, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
+import { LineChart, Line, CartesianGrid, XAxis, YAxis, ResponsiveContainer } from 'recharts';
 import { cn } from '@/lib/utils';
 
 const chartConfig = {
@@ -20,34 +20,90 @@ const chartConfig = {
 
 
 export default function TrackerPage() {
-  const [trackedStocks, setTrackedStocks] = useState<Stock[]>(mockStocks.slice(0, 3)); // Initial tracked stocks
-  const [allStocksData, setAllStocksData] = useState<Stock[]>(mockStocks); // All available stocks for adding
+  const [trackedStocks, setTrackedStocks] = useState<Stock[]>(initialMockStocks.slice(0, 3)); 
+  const [allStocksData, setAllStocksData] = useState<Stock[]>(initialMockStocks); 
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedStockForChart, setSelectedStockForChart] = useState<Stock | null>(trackedStocks[0] || null);
+  const [selectedStockForChart, setSelectedStockForChart] = useState<Stock | null>(initialMockStocks[0] || null);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      const updatedSystemStocks = getUpdatedMockStocks();
-      setAllStocksData(updatedSystemStocks); // Update the source of truth for all stocks
-      
-      // Update tracked stocks based on the updated system stocks
-      setTrackedStocks(prevTracked => 
-        prevTracked.map(tracked => 
-          updatedSystemStocks.find(s => s.symbol === tracked.symbol) || tracked
-        )
-      );
-      
-      // Update selected chart stock if it's being tracked
-      if (selectedStockForChart) {
-        const updatedSelected = updatedSystemStocks.find(s => s.symbol === selectedStockForChart.symbol);
-        if (updatedSelected) {
-          setSelectedStockForChart(updatedSelected);
+    const fetchInitialAndSubscribe = async () => {
+      try {
+        const updatedSystemStocks = await getUpdatedMockStocks();
+        setAllStocksData(updatedSystemStocks);
+        
+        // Update tracked stocks based on the new full list
+        setTrackedStocks(prevTracked => 
+          prevTracked.map(tracked => 
+            updatedSystemStocks.find(s => s.symbol === tracked.symbol) || tracked
+          ).filter(Boolean) as Stock[] // filter out undefined if a symbol was removed
+        );
+        
+        // Update selected chart stock if it's being tracked
+        if (selectedStockForChart) {
+          const updatedSelected = updatedSystemStocks.find(s => s.symbol === selectedStockForChart.symbol);
+          if (updatedSelected) {
+            setSelectedStockForChart(updatedSelected);
+          } else if (trackedStocks.length > 0) { // If selected stock is no longer available, pick first tracked
+             setSelectedStockForChart(trackedStocks[0]);
+          } else {
+             setSelectedStockForChart(null);
+          }
+        } else if (updatedSystemStocks.length > 0 && trackedStocks.length > 0) {
+            setSelectedStockForChart(trackedStocks[0] || updatedSystemStocks[0]);
         }
+
+
+      } catch (error) {
+        console.error("Failed to fetch initial stock data:", error);
+      } finally {
+        setIsLoading(false);
       }
 
-    }, 3000); // Update every 3 seconds
-    return () => clearInterval(interval);
-  }, [selectedStockForChart]);
+      const interval = setInterval(async () => {
+        try {
+          const updatedSystemStocks = await getUpdatedMockStocks();
+          setAllStocksData(updatedSystemStocks);
+      
+          setTrackedStocks(prevTracked => 
+            prevTracked.map(tracked => 
+              updatedSystemStocks.find(s => s.symbol === tracked.symbol) || tracked
+            ).filter(Boolean) as Stock[]
+          );
+          
+          if (selectedStockForChart) {
+            const updatedSelected = updatedSystemStocks.find(s => s.symbol === selectedStockForChart.symbol);
+            if (updatedSelected) {
+              setSelectedStockForChart(updatedSelected);
+            }
+          }
+        } catch (error) {
+          console.error("Failed to fetch updated stock data:", error);
+        }
+      }, 3000); // Update every 3 seconds
+      return () => clearInterval(interval);
+    };
+    
+    fetchInitialAndSubscribe();
+
+  }, []); // Main dependency is on mount, interval handles selectedStockForChart updates implicitly via allStocksData
+
+  // Update selected stock for chart if the main list changes and the selected one is present
+   useEffect(() => {
+    if (!isLoading && selectedStockForChart) {
+        const currentSelectedStockData = allStocksData.find(s => s.symbol === selectedStockForChart.symbol);
+        if (currentSelectedStockData) {
+            setSelectedStockForChart(currentSelectedStockData);
+        } else if (trackedStocks.length > 0) { // If current selected is gone, pick first from tracked
+            setSelectedStockForChart(trackedStocks[0]);
+        } else {
+             setSelectedStockForChart(null);
+        }
+    } else if (!isLoading && !selectedStockForChart && trackedStocks.length > 0) {
+        setSelectedStockForChart(trackedStocks[0]);
+    }
+  }, [allStocksData, trackedStocks, selectedStockForChart, isLoading]);
+
 
   const handleAddStock = (stockSymbol: string) => {
     const stockToAdd = allStocksData.find(s => s.symbol === stockSymbol);
@@ -60,10 +116,13 @@ export default function TrackerPage() {
   };
 
   const handleRemoveStock = (stockSymbol: string) => {
-    setTrackedStocks(prev => prev.filter(s => s.symbol !== stockSymbol));
-    if (selectedStockForChart && selectedStockForChart.symbol === stockSymbol) {
-      setSelectedStockForChart(trackedStocks.length > 1 ? trackedStocks.filter(s => s.symbol !== stockSymbol)[0] : null);
-    }
+    setTrackedStocks(prev => {
+      const newTracked = prev.filter(s => s.symbol !== stockSymbol);
+      if (selectedStockForChart && selectedStockForChart.symbol === stockSymbol) {
+        setSelectedStockForChart(newTracked.length > 0 ? newTracked[0] : null);
+      }
+      return newTracked;
+    });
   };
 
   const filteredSearchableStocks = allStocksData
@@ -71,11 +130,26 @@ export default function TrackerPage() {
     .filter(stock => !trackedStocks.some(ts => ts.symbol === stock.symbol)) // Exclude already tracked stocks
     .slice(0, 5); // Limit results
 
+
+  if (isLoading && trackedStocks.length === 0) {
+     return (
+        <div className="flex h-screen w-full items-center justify-center">
+            <div className="text-center">
+                <svg className="mx-auto h-12 w-12 animate-spin text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <p className="mt-4 text-lg text-foreground">Loading Stock Tracker...</p>
+            </div>
+        </div>
+    );
+  }
+
   return (
     <div className="w-full">
       <PageHeader
         title="Live Stock Tracker"
-        description="Monitor real-time stock prices and performance."
+        description="Monitor stock prices and performance. Data updates periodically."
         icon={LucideLineChart}
       />
 
@@ -114,12 +188,12 @@ export default function TrackerPage() {
                         content={<ChartTooltipContent 
                                     indicator="line" 
                                     hideLabel 
-                                    formatter={(value, name, item) => (
+                                    formatter={(value, name, item) => item.payload.month && item.payload.price ? (
                                         <div className="flex flex-col">
                                             <span className="font-semibold">{item.payload.month}</span>
-                                            <span className="text-sm">{formatCurrency(value as number)}</span>
+                                            <span className="text-sm">{formatCurrency(item.payload.price as number)}</span>
                                         </div>
-                                    )}
+                                    ) : null}
                                 />} 
                     />
                     <Line type="monotone" dataKey="price" stroke="var(--color-price)" strokeWidth={2} dot={false} />
@@ -179,7 +253,7 @@ export default function TrackerPage() {
             </CardHeader>
             <CardContent>
               {trackedStocks.length === 0 ? (
-                <p className="text-muted-foreground text-center py-4">No stocks are currently being tracked.</p>
+                <p className="text-muted-foreground text-center py-4">No stocks are currently being tracked. Add some using the search above.</p>
               ) : (
                 <Table>
                   <TableHeader>
@@ -199,7 +273,7 @@ export default function TrackerPage() {
                       >
                         <TableCell className="font-medium">
                           <div className="flex items-center gap-2">
-                            <img src={stock.logoUrl} alt={stock.name} data-ai-hint={stock.dataAiHint || 'company logo'} className="h-6 w-6 rounded-full"/>
+                            {stock.logoUrl && <img src={stock.logoUrl} alt={stock.name} data-ai-hint={stock.dataAiHint || 'company logo'} className="h-6 w-6 rounded-full"/>}
                             {stock.symbol}
                           </div>
                         </TableCell>
@@ -225,5 +299,3 @@ export default function TrackerPage() {
     </div>
   );
 }
-
-    

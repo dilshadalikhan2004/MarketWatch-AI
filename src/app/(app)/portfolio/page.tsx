@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Briefcase, PlusCircle, Trash2, TrendingUp, TrendingDown, Info } from 'lucide-react';
 import { useUserPortfolio } from '@/hooks/use-user-portfolio';
-import { mockStocks, getUpdatedMockStocks, getStockBySymbol } from '@/lib/mock-data';
+import { mockStocks as initialMockStocks, getUpdatedMockStocks, getStockBySymbol as getBaseStockBySymbol } from '@/lib/mock-data';
 import type { UserPortfolioPosition, Stock } from '@/lib/types';
 import { formatCurrency, formatPercentage } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
@@ -33,7 +33,8 @@ export default function PortfolioPage() {
   const { positions, addPosition, removePosition, isLoaded: isPortfolioLoaded } = useUserPortfolio();
   const { toast } = useToast();
 
-  const [currentStockData, setCurrentStockData] = useState<Stock[]>(mockStocks);
+  const [currentStockData, setCurrentStockData] = useState<Stock[]>(initialMockStocks);
+  const [isLoadingPrices, setIsLoadingPrices] = useState(true);
 
   const [newSymbol, setNewSymbol] = useState('');
   const [newShares, setNewShares] = useState('');
@@ -41,9 +42,21 @@ export default function PortfolioPage() {
   const [formError, setFormError] = useState<string | null>(null);
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      setCurrentStockData(getUpdatedMockStocks());
-    }, 3000); // Update stock prices every 3 seconds
+    const fetchAndUpdatePrices = async () => {
+      setIsLoadingPrices(true);
+      try {
+        const updatedStocks = await getUpdatedMockStocks();
+        setCurrentStockData(updatedStocks);
+      } catch (error) {
+        console.error("Failed to update stock prices for portfolio:", error);
+        // Keep existing currentStockData or handle error appropriately
+      } finally {
+        setIsLoadingPrices(false);
+      }
+    };
+
+    fetchAndUpdatePrices(); // Initial fetch
+    const interval = setInterval(fetchAndUpdatePrices, 5000); // Update stock prices every 5 seconds
     return () => clearInterval(interval);
   }, []);
 
@@ -72,7 +85,8 @@ export default function PortfolioPage() {
       setFormError("Average purchase price must be a positive number.");
       return;
     }
-    const stockExists = mockStocks.some(s => s.symbol.toUpperCase() === symbol);
+    // Check against the base mock stocks list for existence of the symbol
+    const stockExists = initialMockStocks.some(s => s.symbol.toUpperCase() === symbol);
     if (!stockExists) {
       setFormError(`Stock symbol "${symbol}" not found in available mock data.`);
       return;
@@ -86,8 +100,10 @@ export default function PortfolioPage() {
   const enrichedPositions: DisplayUserPortfolioPosition[] = useMemo(() => {
     if (!isPortfolioLoaded) return [];
     return positions.map(pos => {
-      const stockInfo = getStockBySymbol(pos.symbol) || currentStockData.find(s => s.symbol === pos.symbol);
-      const currentPrice = stockInfo?.price || pos.avgPurchasePrice; // Fallback to purchase price if not found
+      const baseStockInfo = getBaseStockBySymbol(pos.symbol); // Get static info like name, logo
+      const liveStockInfo = currentStockData.find(s => s.symbol === pos.symbol);
+      
+      const currentPrice = liveStockInfo?.price || pos.avgPurchasePrice; // Fallback to purchase price if live not found
       
       const initialCost = pos.shares * pos.avgPurchasePrice;
       const marketValue = pos.shares * currentPrice;
@@ -96,9 +112,9 @@ export default function PortfolioPage() {
 
       return {
         ...pos,
-        name: stockInfo?.name,
-        logoUrl: stockInfo?.logoUrl,
-        dataAiHint: stockInfo?.dataAiHint,
+        name: baseStockInfo?.name,
+        logoUrl: baseStockInfo?.logoUrl,
+        dataAiHint: baseStockInfo?.dataAiHint,
         currentPrice,
         initialCost,
         marketValue,
@@ -121,7 +137,7 @@ export default function PortfolioPage() {
     <div className="w-full">
       <PageHeader
         title="My Simulated Portfolio"
-        description="Manage your hypothetical stock positions and track their simulated performance using mock market data."
+        description="Manage your hypothetical stock positions and track their simulated performance using dynamically updating (mock) market data."
         icon={Briefcase}
       />
 
@@ -129,8 +145,8 @@ export default function PortfolioPage() {
         <Info className="h-5 w-5 text-blue-600 dark:text-blue-400" />
         <AlertTitle className="font-semibold text-blue-700 dark:text-blue-300">Simulation Environment</AlertTitle>
         <AlertDescription className="text-blue-600 dark:text-blue-400">
-          This portfolio is for simulation and educational purposes only, using mock market data.
-          It does not represent real investments or provide financial advice. Prices update based on mock data feeds.
+          This portfolio is for simulation and educational purposes only. It uses mock market data that updates periodically to simulate real market changes.
+          It does not represent real investments or provide financial advice.
         </AlertDescription>
       </Alert>
 
@@ -167,6 +183,7 @@ export default function PortfolioPage() {
             {isPortfolioLoaded && enrichedPositions.length > 0 
               ? `You have ${enrichedPositions.length} position(s) in your simulated portfolio.`
               : "Your simulated portfolio is empty."}
+            {isLoadingPrices && isPortfolioLoaded && enrichedPositions.length > 0 && " (Updating prices...)"}
           </CardDescription>
         </CardHeader>
         <CardContent>

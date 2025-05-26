@@ -10,10 +10,10 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AreaChart, BarChart3, Newspaper, TrendingUp, TrendingDown, Zap, ArrowRight, AlertCircle, Wallet } from 'lucide-react';
 import { StockCard, MinimalStockCard } from '@/components/common/StockCard';
 import { NewsCard } from '@/components/common/NewsCard';
-import { mockStocks, mockNews, mockMarketMovers, mockSentimentData, getUpdatedMockStocks, mockPortfolio } from '@/lib/mock-data';
+import { mockStocks as initialMockStocks, mockNews, mockMarketMovers, mockSentimentData, getUpdatedMockStocks, mockPortfolio } from '@/lib/mock-data';
 import type { Stock, NewsArticle, MarketMover, SentimentDataPoint, PortfolioPosition as PortfolioPositionType } from '@/lib/types';
-import { ChartContainer, ChartTooltip, ChartTooltipContent, ChartLegend, ChartLegendContent } from "@/components/ui/chart";
-import { Bar, BarChart as RechartsBarChart, CartesianGrid, XAxis, YAxis, Line, LineChart as RechartsLineChart, ResponsiveContainer, Tooltip as RechartsTooltip, Legend as RechartsLegend, Cell } from 'recharts';
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
+import { Bar, BarChart as RechartsBarChart, CartesianGrid, XAxis, YAxis, Line, LineChart as RechartsLineChart, ResponsiveContainer, Cell } from 'recharts';
 import { formatCurrency, formatPercentage, formatDate } from '@/lib/formatters';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
@@ -36,8 +36,8 @@ interface DisplayPortfolioPosition extends PortfolioPositionType {
 }
 
 export default function DashboardPage() {
-  const [currentStocks, setCurrentStocks] = useState<Stock[]>(mockStocks);
-  const [marketOverviewStock, setMarketOverviewStock] = useState<Stock>(mockStocks[0]);
+  const [currentStocks, setCurrentStocks] = useState<Stock[]>(initialMockStocks);
+  const [marketOverviewStock, setMarketOverviewStock] = useState<Stock>(initialMockStocks[0]);
   const [portfolioData, setPortfolioData] = useState<DisplayPortfolioPosition[]>([]);
   const [portfolioTotals, setPortfolioTotals] = useState({
     marketValue: 0,
@@ -45,16 +45,31 @@ export default function DashboardPage() {
     gainLossPercent: 0,
     initialCost: 0,
   });
+  const [isLoading, setIsLoading] = useState(true);
 
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      setCurrentStocks(getUpdatedMockStocks());
-    }, 5000); // Update every 5 seconds
+    const fetchData = async () => {
+      try {
+        const updatedSystemStocks = await getUpdatedMockStocks();
+        setCurrentStocks(updatedSystemStocks);
+      } catch (error) {
+        console.error("Failed to fetch updated stock data:", error);
+        // Potentially set an error state to display to the user
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    fetchData(); // Initial fetch
+
+    const interval = setInterval(fetchData, 5000); // Update every 5 seconds
     return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
+    if (isLoading) return; // Don't update dependent states until initial data is loaded
+
     const updatedOverviewStock = currentStocks.find(s => s.symbol === marketOverviewStock.symbol);
     if (updatedOverviewStock) {
       setMarketOverviewStock(updatedOverviewStock);
@@ -62,8 +77,8 @@ export default function DashboardPage() {
 
     // Calculate portfolio values
     const enrichedPortfolio = mockPortfolio.map(pos => {
-      const currentStock = currentStocks.find(s => s.symbol === pos.symbol);
-      const currentPrice = currentStock?.price || pos.avgPurchasePrice; // Use avgPurchasePrice as fallback if stock not found for some reason
+      const currentStockInfo = currentStocks.find(s => s.symbol === pos.symbol);
+      const currentPrice = currentStockInfo?.price || pos.avgPurchasePrice; 
       const marketValue = pos.shares * currentPrice;
       const initialCost = pos.shares * pos.avgPurchasePrice;
       const gainLoss = marketValue - initialCost;
@@ -71,9 +86,9 @@ export default function DashboardPage() {
 
       return {
         ...pos,
-        name: currentStock?.name,
-        logoUrl: currentStock?.logoUrl,
-        dataAiHint: currentStock?.dataAiHint,
+        name: currentStockInfo?.name,
+        logoUrl: currentStockInfo?.logoUrl,
+        dataAiHint: currentStockInfo?.dataAiHint,
         currentPrice: currentPrice,
         marketValue,
         initialCost,
@@ -96,12 +111,26 @@ export default function DashboardPage() {
       initialCost: totalInitialCost,
     });
 
-  }, [currentStocks, marketOverviewStock.symbol]);
+  }, [currentStocks, marketOverviewStock.symbol, isLoading]);
 
 
   const renderMarketMoverCard = (mover: MarketMover) => (
     <MinimalStockCard key={mover.symbol} stock={mover} className="w-full" />
   );
+
+  if (isLoading && currentStocks.length === 0) {
+    return (
+        <div className="flex h-screen w-full items-center justify-center">
+            <div className="text-center">
+                <svg className="mx-auto h-12 w-12 animate-spin text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <p className="mt-4 text-lg text-foreground">Loading Dashboard Data...</p>
+            </div>
+        </div>
+    );
+  }
 
   return (
     <div className="flex w-full flex-col gap-6">
@@ -127,7 +156,7 @@ export default function DashboardPage() {
             <CardHeader>
               <CardTitle className="flex items-center justify-between">
                 <span>Market Overview: {marketOverviewStock.name} ({marketOverviewStock.symbol})</span>
-                <img src={marketOverviewStock.logoUrl} alt={`${marketOverviewStock.name} logo`} data-ai-hint={marketOverviewStock.dataAiHint || 'company logo'} className="h-8 w-8 rounded-full" />
+                {marketOverviewStock.logoUrl && <img src={marketOverviewStock.logoUrl} alt={`${marketOverviewStock.name} logo`} data-ai-hint={marketOverviewStock.dataAiHint || 'company logo'} className="h-8 w-8 rounded-full" />}
               </CardTitle>
               <CardDescription>
                 Price: {formatCurrency(marketOverviewStock.price)}
@@ -167,11 +196,11 @@ export default function DashboardPage() {
               <CardDescription>A sample overview of your investment performance.</CardDescription>
             </CardHeader>
             <CardContent>
-              <Alert variant="default" className="mb-4 bg-blue-50 border-blue-200">
-                <AlertCircle className="h-4 w-4 text-blue-600" />
-                <AlertTitle className="text-blue-700 font-semibold">Sample Data</AlertTitle>
-                <AlertDescription className="text-blue-600">
-                  The portfolio data displayed below is for demonstration purposes only.
+              <Alert variant="default" className="mb-4 bg-blue-50 border-blue-200 dark:bg-blue-900/30 dark:border-blue-700">
+                <AlertCircle className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                <AlertTitle className="text-blue-700 dark:text-blue-300 font-semibold">Sample Data</AlertTitle>
+                <AlertDescription className="text-blue-600 dark:text-blue-400">
+                  The portfolio data displayed below is for demonstration purposes only, using dynamically updating mock prices.
                 </AlertDescription>
               </Alert>
               {portfolioData.length > 0 ? (
