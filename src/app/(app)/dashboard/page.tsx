@@ -7,14 +7,14 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { AreaChart, BarChart3, Newspaper, TrendingUp, TrendingDown, Zap, ArrowRight, AlertCircle, Wallet } from 'lucide-react';
+import { AreaChart, BarChart3, Newspaper, TrendingUp, TrendingDown, Zap, ArrowRight, AlertCircle, Wallet, RefreshCw } from 'lucide-react';
 import { MinimalStockCard } from '@/components/common/StockCard';
 import { NewsCard } from '@/components/common/NewsCard';
 import { mockNews, mockMarketMovers as initialMarketMovers, mockSentimentData, mockPortfolio as basePortfolio, mockStocks } from '@/lib/mock-data';
-import type { Stock, NewsArticle, MarketMover, SentimentDataPoint, PortfolioPosition as PortfolioPositionType, RealtimeStockData } from '@/lib/types';
+import type { Stock, NewsArticle, MarketMover, SentimentDataPoint, PortfolioPosition as PortfolioPositionType } from '@/lib/types';
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
-import { Bar, BarChart as RechartsBarChart, CartesianGrid, XAxis, YAxis, Line, LineChart as RechartsLineChart, ResponsiveContainer, Cell } from 'recharts';
-import { formatCurrency, formatPercentage, formatDate } from '@/lib/formatters';
+import { Bar, BarChart as RechartsBarChart, CartesianGrid, XAxis, YAxis, Line, LineChart as RechartsLineChart } from 'recharts';
+import { formatCurrency, formatPercentage } from '@/lib/formatters';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 import { useRealtimeStockData } from '@/contexts/RealtimeStockContext';
@@ -38,45 +38,52 @@ interface DisplayPortfolioPosition extends PortfolioPositionType {
 }
 
 export default function DashboardPage() {
-  const { stockData: realtimeStockData, subscribeToSymbol, unsubscribeFromSymbol, isLoading: isLoadingRealtime, error: realtimeError } = useRealtimeStockData();
+  const { stockData: realtimeStockData, subscribeToSymbol, unsubscribeFromSymbol, refreshStockData, isLoading: isLoadingData, error: dataError } = useRealtimeStockData();
   const [isMounted, setIsMounted] = useState(false);
+
+  // Symbols to track on the dashboard
+  const dashboardTrackedSymbols = useMemo(() => [
+    mockStocks.length > 0 ? mockStocks[0].symbol : '', // For Market Overview
+    ...basePortfolio.map(p => p.symbol), // For Portfolio Snapshot
+    ...initialMarketMovers.gainers.map(m => m.symbol),
+    ...initialMarketMovers.losers.map(m => m.symbol),
+    ...initialMarketMovers.active.map(m => m.symbol),
+  ].filter(Boolean), []); // Filter out potential empty string if mockStocks is empty
+
 
   useEffect(() => {
     setIsMounted(true);
-  }, []);
-  
-  const [selectedMarketSymbol, setSelectedMarketSymbol] = useState<string>(mockStocks.length > 0 ? mockStocks[0].symbol : '');
-
-  useEffect(() => {
-    if (selectedMarketSymbol) {
-      subscribeToSymbol(selectedMarketSymbol);
-      return () => unsubscribeFromSymbol(selectedMarketSymbol);
+    const uniqueSymbols = Array.from(new Set(dashboardTrackedSymbols));
+    uniqueSymbols.forEach(subscribeToSymbol);
+    if (uniqueSymbols.length > 0) {
+        console.log('[DashboardPage] Initial data fetch for symbols:', uniqueSymbols);
+        refreshStockData(uniqueSymbols);
     }
-  }, [selectedMarketSymbol, subscribeToSymbol, unsubscribeFromSymbol]);
+    return () => {
+      uniqueSymbols.forEach(unsubscribeFromSymbol);
+    };
+  }, [subscribeToSymbol, unsubscribeFromSymbol, refreshStockData, dashboardTrackedSymbols]);
+
+
+  const marketOverviewStockSymbol = useMemo(() => mockStocks.length > 0 ? mockStocks[0].symbol : '', []);
 
   const marketOverviewStock = useMemo(() => {
-    const baseStock = mockStocks.find(s => s.symbol === selectedMarketSymbol);
-    const rtData = realtimeStockData[selectedMarketSymbol];
-    if (rtData) {
-      return { ...baseStock, ...rtData, name: baseStock?.name || rtData.symbol, logoUrl: baseStock?.logoUrl, dataAiHint: baseStock?.dataAiHint, chartData: baseStock?.chartData || [] } as Stock;
+    if (!marketOverviewStockSymbol) return null;
+    const baseStock = mockStocks.find(s => s.symbol === marketOverviewStockSymbol);
+    const rtData = realtimeStockData[marketOverviewStockSymbol];
+    if (rtData && isMounted) { // Only use rtData if component is mounted to avoid hydration issues with initial data
+      return { ...baseStock, ...rtData, name: baseStock?.name || rtData.symbol, logoUrl: baseStock?.logoUrl, dataAiHint: baseStock?.dataAiHint, chartData: rtData.chartData || baseStock?.chartData || [] } as Stock;
     }
     return baseStock || null;
-  }, [selectedMarketSymbol, realtimeStockData]);
+  }, [marketOverviewStockSymbol, realtimeStockData, isMounted]);
   
-  useEffect(() => {
-    const portfolioSymbols = new Set(basePortfolio.map(p => p.symbol));
-    portfolioSymbols.forEach(symbol => subscribeToSymbol(symbol));
-    return () => {
-      portfolioSymbols.forEach(symbol => unsubscribeFromSymbol(symbol));
-    };
-  }, [subscribeToSymbol, unsubscribeFromSymbol]);
-
 
   const portfolioData: DisplayPortfolioPosition[] = useMemo(() => {
     return basePortfolio.map(pos => {
       const baseStockInfo = mockStocks.find(s => s.symbol === pos.symbol);
       const currentRealtimeData = realtimeStockData[pos.symbol];
-      const currentPrice = currentRealtimeData?.price || baseStockInfo?.price || pos.avgPurchasePrice;
+      // Use realtime price if available and mounted, otherwise fallback
+      const currentPrice = (isMounted && currentRealtimeData?.price) ? currentRealtimeData.price : (baseStockInfo?.price || pos.avgPurchasePrice);
       
       const initialCost = pos.shares * pos.avgPurchasePrice;
       const marketValue = pos.shares * currentPrice;
@@ -95,7 +102,7 @@ export default function DashboardPage() {
         gainLossPercent,
       };
     });
-  }, [realtimeStockData]);
+  }, [realtimeStockData, isMounted]);
 
   const portfolioTotals = useMemo(() => {
     const totalMarketValue = portfolioData.reduce((sum, item) => sum + item.marketValue, 0);
@@ -105,56 +112,30 @@ export default function DashboardPage() {
     return { marketValue: totalMarketValue, initialCost: totalInitialCost, gainLoss: totalGainLoss, gainLossPercent: totalGainLossPercent };
   }, [portfolioData]);
   
-  const [currentMarketMovers, setCurrentMarketMovers] = useState(initialMarketMovers);
-
-  useEffect(() => {
-    const updatedMovers = {
-      gainers: [...initialMarketMovers.gainers], 
-      losers: [...initialMarketMovers.losers],
-      active: [...initialMarketMovers.active],
-    };
-
+  const currentMarketMovers = useMemo(() => {
     const updateMoverList = (list: MarketMover[]) => {
       return list.map(mover => {
         const rtData = realtimeStockData[mover.symbol];
-        if (rtData) {
-          return { ...mover, ...rtData };
-        }
-        return mover;
+        return (isMounted && rtData) ? { ...mover, ...rtData } : mover;
       })
-      .sort((a,b) => (b.changePercent || 0) - (a.changePercent || 0));
     };
-    
-    updatedMovers.gainers = updateMoverList(updatedMovers.gainers).sort((a,b) => (b.changePercent || 0) - (a.changePercent || 0));
-    updatedMovers.losers = updateMoverList(updatedMovers.losers).sort((a,b) => (a.changePercent || 0) - (b.changePercent || 0));
-    updatedMovers.active = updateMoverList(updatedMovers.active).sort((a,b) => 
+    const gainers = updateMoverList(initialMarketMovers.gainers).sort((a,b) => (b.changePercent || 0) - (a.changePercent || 0));
+    const losers = updateMoverList(initialMarketMovers.losers).sort((a,b) => (a.changePercent || 0) - (b.changePercent || 0));
+    const active = updateMoverList(initialMarketMovers.active).sort((a,b) => 
         (realtimeStockData[b.symbol]?.dailyVolume || parseFloat(b.volume?.replace(/[^0-9.]/g, '') || '0')) - 
         (realtimeStockData[a.symbol]?.dailyVolume || parseFloat(a.volume?.replace(/[^0-9.]/g, '') || '0'))
     );
-
-
-    setCurrentMarketMovers(updatedMovers);
-    
-    const moverSymbols = new Set([
-        ...updatedMovers.gainers.map(s => s.symbol),
-        ...updatedMovers.losers.map(s => s.symbol),
-        ...updatedMovers.active.map(s => s.symbol)
-    ]);
-    moverSymbols.forEach(subscribeToSymbol);
-    return () => {
-        moverSymbols.forEach(unsubscribeFromSymbol);
-    }
-
-  }, [realtimeStockData, subscribeToSymbol, unsubscribeFromSymbol]);
+    return {gainers, losers, active};
+  }, [realtimeStockData, isMounted]);
 
 
   const renderMarketMoverCard = (mover: MarketMover) => {
     const rtData = realtimeStockData[mover.symbol];
-    const displayData = rtData ? { ...mover, ...rtData } : mover;
+    const displayData = (isMounted && rtData) ? { ...mover, ...rtData } : mover;
     return <MinimalStockCard key={mover.symbol} stock={displayData} className="w-full" />;
   };
   
-  if (isLoadingRealtime && !marketOverviewStock && !isMounted) {
+  if (!isMounted && isLoadingData) { // Show loading skeleton if not mounted and data is loading
     return (
         <div className="flex h-screen w-full items-center justify-center">
             <div className="text-center">
@@ -168,35 +149,27 @@ export default function DashboardPage() {
     );
   }
   
-  if (realtimeError) {
-     return (
-        <div className="flex h-screen w-full items-center justify-center">
-            <Alert variant="destructive" className="max-w-md">
-                <AlertCircle className="h-4 w-4" />
-                <AlertTitle>Real-time Data Error</AlertTitle>
-                <AlertDescription>{realtimeError} Please check your API key or network connection.</AlertDescription>
-            </Alert>
-        </div>
-     )
-  }
-
-
   return (
     <div className="flex w-full flex-col gap-6">
       <PageHeader
         title="Dashboard Overview"
-        description="Welcome back! Here's a snapshot of the current market. Real-time data updates via WebSocket."
+        description="Market insights at a glance. Data fetched from Alpha Vantage."
         icon={AreaChart}
         actions={
-          <Button asChild variant="outline">
-            <Link href="#">
-              <Newspaper className="mr-2 h-4 w-4" />
-              Generate Report
-            </Link>
+          <Button onClick={() => refreshStockData(Array.from(new Set(dashboardTrackedSymbols)))} disabled={isLoadingData} variant="outline">
+            <RefreshCw className={cn("mr-2 h-4 w-4", isLoadingData && "animate-spin")} />
+            Refresh Data
           </Button>
         }
       />
-      {isLoadingRealtime && isMounted && <p className="text-sm text-muted-foreground">Connecting to real-time updates...</p>}
+      {isLoadingData && isMounted && <p className="text-sm text-muted-foreground">Fetching latest data...</p>}
+      {dataError && isMounted && (
+        <Alert variant="destructive" className="max-w-full">
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>Data Fetching Error</AlertTitle>
+            <AlertDescription>{dataError} Some data might be outdated or unavailable. This could be due to API limits.</AlertDescription>
+        </Alert>
+      )}
 
 
       {/* Main Grid */}
@@ -206,20 +179,20 @@ export default function DashboardPage() {
           <Card className="shadow-lg">
             <CardHeader>
               <CardTitle className="flex items-center justify-between">
-                <span>Market Overview: {marketOverviewStock?.name || selectedMarketSymbol} ({selectedMarketSymbol})</span>
+                <span>Market Overview: {marketOverviewStock?.name || marketOverviewStockSymbol} ({marketOverviewStockSymbol})</span>
                 {marketOverviewStock?.logoUrl && <img src={marketOverviewStock.logoUrl} alt={`${marketOverviewStock.name} logo`} data-ai-hint={marketOverviewStock.dataAiHint || 'company logo'} className="h-8 w-8 rounded-full" />}
               </CardTitle>
               {marketOverviewStock && (
                 <CardDescription>
                   Price: {formatCurrency(marketOverviewStock.price)}
-                  {isMounted ? (
+                  {isMounted && marketOverviewStock.change !== undefined ? (
                     <span className={cn(marketOverviewStock.change >= 0 ? 'text-green-500' : 'text-red-500', "ml-1")}>
                       {' '} ({marketOverviewStock.change >= 0 ? '+' : ''}{formatCurrency(marketOverviewStock.change)} / {formatPercentage(marketOverviewStock.changePercent, 2)})
                     </span>
                   ) : (
                     <span className="ml-1">(...)</span> 
                   )}
-                   {isLoadingRealtime && marketOverviewStock.symbol === selectedMarketSymbol && <span className="ml-2 text-xs">(Updating...)</span>}
+                   {isLoadingData && marketOverviewStockSymbol === marketOverviewStock?.symbol && <span className="ml-2 text-xs">(Updating...)</span>}
                 </CardDescription>
               )}
             </CardHeader>
@@ -251,14 +224,14 @@ export default function DashboardPage() {
           <Card className="shadow-lg">
             <CardHeader>
               <CardTitle className="flex items-center gap-2"><Wallet className="h-5 w-5 text-primary" />Portfolio Snapshot</CardTitle>
-              <CardDescription>A sample overview of your investment performance. Prices update in real-time.</CardDescription>
+              <CardDescription>A sample overview of your investment performance. Prices from Alpha Vantage (may be delayed).</CardDescription>
             </CardHeader>
             <CardContent>
               <Alert variant="default" className="mb-4 bg-blue-50 border-blue-200 dark:bg-blue-900/30 dark:border-blue-700">
                 <AlertCircle className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                 <AlertTitle className="text-blue-700 dark:text-blue-300 font-semibold">Sample Data</AlertTitle>
                 <AlertDescription className="text-blue-600 dark:text-blue-400">
-                  The portfolio data displayed below is for demonstration purposes only, using dynamic mock prices.
+                  The portfolio data displayed below is for demonstration purposes only, using dynamic mock prices or delayed data from Alpha Vantage.
                 </AlertDescription>
               </Alert>
               {isMounted && portfolioData.length > 0 ? (
@@ -401,4 +374,3 @@ export default function DashboardPage() {
     </div>
   );
 }
-

@@ -8,10 +8,10 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Briefcase, PlusCircle, Trash2, TrendingUp, TrendingDown, Info, AlertCircle as AlertCircleIcon } from 'lucide-react';
+import { Briefcase, PlusCircle, Trash2, TrendingUp, TrendingDown, Info, AlertCircle as AlertCircleIcon, RefreshCw } from 'lucide-react';
 import { useUserPortfolio } from '@/hooks/use-user-portfolio';
 import { mockStocks as initialMockStocksBase } from '@/lib/mock-data';
-import type { UserPortfolioPosition, Stock, RealtimeStockData } from '@/lib/types';
+import type { UserPortfolioPosition } from '@/lib/types'; // Stock, RealtimeStockData removed as they are from context
 import { formatCurrency, formatPercentage } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
 import Image from 'next/image';
@@ -31,24 +31,33 @@ interface DisplayUserPortfolioPosition extends UserPortfolioPosition {
 
 export default function PortfolioPage() {
   const { positions, addPosition, removePosition, isLoaded: isPortfolioLoaded } = useUserPortfolio();
-  const { stockData: realtimeStockData, subscribeToSymbol, unsubscribeFromSymbol, isLoading: isLoadingRealtime, error: realtimeError } = useRealtimeStockData();
+  const { stockData: realtimeStockData, subscribeToSymbol, unsubscribeFromSymbol, refreshStockData, isLoading: isLoadingData, error: dataError } = useRealtimeStockData();
   const { toast } = useToast();
 
   const [newSymbol, setNewSymbol] = useState('');
   const [newShares, setNewShares] = useState('');
   const [newAvgPrice, setNewAvgPrice] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
+  const [isMounted, setIsMounted] = useState(false);
 
-  // Subscribe to symbols in the user's portfolio
   useEffect(() => {
-    if (isPortfolioLoaded && positions.length > 0) {
-      const portfolioSymbols = new Set(positions.map(p => p.symbol));
-      portfolioSymbols.forEach(symbol => subscribeToSymbol(symbol));
+    setIsMounted(true);
+  }, []);
+
+  // Subscribe to symbols in the user's portfolio and fetch initial data
+  useEffect(() => {
+    if (isMounted && isPortfolioLoaded && positions.length > 0) {
+      const portfolioSymbols = Array.from(new Set(positions.map(p => p.symbol)));
+      portfolioSymbols.forEach(subscribeToSymbol);
+      if (portfolioSymbols.length > 0) {
+        console.log('[PortfolioPage] Initial data fetch for symbols:', portfolioSymbols);
+        refreshStockData(portfolioSymbols);
+      }
       return () => {
-        portfolioSymbols.forEach(symbol => unsubscribeFromSymbol(symbol));
+        portfolioSymbols.forEach(unsubscribeFromSymbol);
       };
     }
-  }, [positions, isPortfolioLoaded, subscribeToSymbol, unsubscribeFromSymbol]);
+  }, [positions, isPortfolioLoaded, subscribeToSymbol, unsubscribeFromSymbol, refreshStockData, isMounted]);
 
   const resetForm = () => {
     setNewSymbol('');
@@ -77,22 +86,25 @@ export default function PortfolioPage() {
     }
     const stockExists = initialMockStocksBase.some(s => s.symbol.toUpperCase() === symbol);
     if (!stockExists) {
-      setFormError(`Stock symbol "${symbol}" not found in available mock data.`);
-      return;
+      setFormError(`Stock symbol "${symbol}" not found in available mock data for basic info. Price will be fetched.`);
+      // Allow adding even if not in base mock, as Alpha Vantage might have it.
+      // The name/logo might be missing until fetched or if base mock doesn't have it.
     }
 
     addPosition({ symbol, shares, avgPurchasePrice: avgPrice });
+    subscribeToSymbol(symbol); // Subscribe to new symbol for updates
+    refreshStockData(symbol);   // Fetch data for the newly added symbol
     toast({ title: "Position Added", description: `${shares} shares of ${symbol} added to your simulated portfolio.` });
     resetForm();
   };
 
   const enrichedPositions: DisplayUserPortfolioPosition[] = useMemo(() => {
-    if (!isPortfolioLoaded) return [];
+    if (!isPortfolioLoaded || !isMounted) return [];
     return positions.map(pos => {
       const baseStockInfo = initialMockStocksBase.find(s => s.symbol === pos.symbol);
       const currentRealtimeData = realtimeStockData[pos.symbol];
       
-      const currentPrice = currentRealtimeData?.price || baseStockInfo?.price || pos.avgPurchasePrice;
+      const currentPrice = currentRealtimeData?.price !== undefined ? currentRealtimeData.price : (baseStockInfo?.price || pos.avgPurchasePrice);
       
       const initialCost = pos.shares * pos.avgPurchasePrice;
       const marketValue = pos.shares * currentPrice;
@@ -101,9 +113,9 @@ export default function PortfolioPage() {
 
       return {
         ...pos,
-        name: baseStockInfo?.name || pos.symbol,
-        logoUrl: baseStockInfo?.logoUrl,
-        dataAiHint: baseStockInfo?.dataAiHint,
+        name: currentRealtimeData?.name || baseStockInfo?.name || pos.symbol,
+        logoUrl: currentRealtimeData?.logoUrl || baseStockInfo?.logoUrl,
+        dataAiHint: currentRealtimeData?.dataAiHint || baseStockInfo?.dataAiHint,
         currentPrice,
         initialCost,
         marketValue,
@@ -111,7 +123,7 @@ export default function PortfolioPage() {
         gainLossPercent,
       };
     });
-  }, [positions, realtimeStockData, isPortfolioLoaded]);
+  }, [positions, realtimeStockData, isPortfolioLoaded, isMounted]);
 
   const portfolioTotals = useMemo(() => {
     const initialCost = enrichedPositions.reduce((sum, p) => sum + p.initialCost, 0);
@@ -121,33 +133,42 @@ export default function PortfolioPage() {
     return { initialCost, marketValue, gainLoss, gainLossPercent };
   }, [enrichedPositions]);
 
-  if (realtimeError) {
-    return (
-      <div className="w-full flex items-center justify-center py-10">
-        <Alert variant="destructive" className="max-w-lg">
-          <AlertCircleIcon className="h-4 w-4" />
-          <AlertTitle>Real-time Data Error</AlertTitle>
-          <AlertDescription>{realtimeError} Portfolio performance cannot be updated. Please check API key or network.</AlertDescription>
-        </Alert>
-      </div>
-    );
-  }
+  const handleRefreshAllPortfolio = () => {
+    const portfolioSymbols = Array.from(new Set(positions.map(p => p.symbol)));
+    if (portfolioSymbols.length > 0) {
+        refreshStockData(portfolioSymbols);
+    }
+  };
+
 
   return (
     <div className="w-full">
       <PageHeader
         title="My Simulated Portfolio"
-        description="Manage your hypothetical stock positions. Performance updates based on real-time (simulated or Polygon.io) data."
+        description="Manage your hypothetical stock positions. Performance based on Alpha Vantage data (may be delayed)."
         icon={Briefcase}
+        actions={
+            <Button onClick={handleRefreshAllPortfolio} disabled={isLoadingData} variant="outline">
+                <RefreshCw className={cn("mr-2 h-4 w-4", isLoadingData && "animate-spin")} />
+                Refresh Portfolio
+            </Button>
+        }
       />
-       {isLoadingRealtime && <p className="text-sm text-muted-foreground mb-4">Connecting to real-time updates...</p>}
+       {isLoadingData && isMounted && <p className="text-sm text-muted-foreground mb-4">Fetching latest data...</p>}
+       {dataError && isMounted && (
+        <Alert variant="destructive" className="mb-4">
+          <AlertCircleIcon className="h-4 w-4" />
+          <AlertTitle>Data Fetching Error</AlertTitle>
+          <AlertDescription>{dataError} Portfolio performance cannot be updated. This could be due to API limits.</AlertDescription>
+        </Alert>
+      )}
 
 
       <Alert variant="default" className="mb-6 bg-blue-50 border-blue-200 dark:bg-blue-900/30 dark:border-blue-700">
         <Info className="h-5 w-5 text-blue-600 dark:text-blue-400" />
         <AlertTitle className="font-semibold text-blue-700 dark:text-blue-300">Simulation Environment</AlertTitle>
         <AlertDescription className="text-blue-600 dark:text-blue-400">
-          This portfolio is for simulation and educational purposes. It uses dynamic data (mock or from Polygon.io if configured) to simulate market changes.
+          This portfolio is for simulation and educational purposes. It uses data from Alpha Vantage (which may be delayed depending on your API plan) to simulate market changes.
           It does not represent real investments or provide financial advice.
         </AlertDescription>
       </Alert>
@@ -170,7 +191,7 @@ export default function PortfolioPage() {
               <Label htmlFor="newAvgPrice">Avg. Purchase Price</Label>
               <Input id="newAvgPrice" type="number" placeholder="e.g., 150.00" value={newAvgPrice} onChange={(e) => setNewAvgPrice(e.target.value)} />
             </div>
-            <Button onClick={handleAddPosition} className="w-full sm:w-auto">
+            <Button onClick={handleAddPosition} className="w-full sm:w-auto" disabled={isLoadingData}>
               <PlusCircle className="mr-2 h-4 w-4" /> Add Position
             </Button>
           </div>
@@ -182,14 +203,16 @@ export default function PortfolioPage() {
         <CardHeader>
           <CardTitle>Your Positions</CardTitle>
           <CardDescription>
-            {isPortfolioLoaded && enrichedPositions.length > 0 
+            {(!isPortfolioLoaded || !isMounted)
+              ? "Loading portfolio..."
+              : enrichedPositions.length > 0 
               ? `You have ${enrichedPositions.length} position(s) in your simulated portfolio.`
               : "Your simulated portfolio is empty."}
-            {isLoadingRealtime && isPortfolioLoaded && enrichedPositions.length > 0 && " (Updating prices...)"}
+            {isLoadingData && isMounted && enrichedPositions.length > 0 && " (Updating prices...)"}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {!isPortfolioLoaded ? (
+          {(!isPortfolioLoaded || !isMounted) ? (
             <p className="text-muted-foreground text-center py-4">Loading portfolio...</p>
           ) : enrichedPositions.length > 0 ? (
             <>
@@ -233,7 +256,7 @@ export default function PortfolioPage() {
                           {formatPercentage(pos.gainLossPercent)}
                         </TableCell>
                         <TableCell className="text-right">
-                          <Button variant="ghost" size="icon" onClick={() => {removePosition(pos.id); toast({title: "Position Removed", description: `Position for ${pos.symbol} removed.`})}} aria-label="Remove position">
+                          <Button variant="ghost" size="icon" onClick={() => {removePosition(pos.id); unsubscribeFromSymbol(pos.symbol); toast({title: "Position Removed", description: `Position for ${pos.symbol} removed.`})}} aria-label="Remove position">
                             <Trash2 className="h-4 w-4 text-destructive" />
                           </Button>
                         </TableCell>

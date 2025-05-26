@@ -6,12 +6,12 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { LineChart as LucideLineChart, Search, PlusCircle, Trash2, TrendingUp, TrendingDown, AlertCircle } from 'lucide-react';
+import { LineChart as LucideLineChart, Search, PlusCircle, Trash2, TrendingUp, TrendingDown, AlertCircle, RefreshCw } from 'lucide-react';
 import { mockStocks as initialMockStocksBase } from '@/lib/mock-data';
-import type { Stock, RealtimeStockData } from '@/lib/types';
+import type { Stock } from '@/lib/types';
 import { formatCurrency, formatPercentage } from '@/lib/formatters';
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
-import { LineChart, Line, CartesianGrid, XAxis, YAxis, ResponsiveContainer } from 'recharts';
+import { LineChart, Line, CartesianGrid, XAxis, YAxis } from 'recharts';
 import { cn } from '@/lib/utils';
 import { useRealtimeStockData } from '@/contexts/RealtimeStockContext';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
@@ -21,59 +21,82 @@ const chartConfig = {
 };
 
 export default function TrackerPage() {
-  const { stockData: realtimeStockData, subscribeToSymbol, unsubscribeFromSymbol, isLoading: isLoadingRealtime, error: realtimeError } = useRealtimeStockData();
+  const { stockData: realtimeStockData, subscribeToSymbol, unsubscribeFromSymbol, refreshStockData, isLoading: isLoadingData, error: dataError } = useRealtimeStockData();
   
-  const [trackedStockSymbols, setTrackedStockSymbols] = useState<Set<string>>(() => 
-    new Set(initialMockStocksBase.slice(0, 3).map(s => s.symbol))
-  );
+  const [isMounted, setIsMounted] = useState(false);
+  const [trackedStockSymbols, setTrackedStockSymbols] = useState<Set<string>>(() => {
+    const initialSymbols = initialMockStocksBase.slice(0, 3).map(s => s.symbol);
+    return new Set(initialSymbols);
+  });
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedSymbolForChart, setSelectedSymbolForChart] = useState<string | null>(
     initialMockStocksBase.length > 0 ? initialMockStocksBase[0].symbol : null
   );
 
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+  
   // Subscribe/unsubscribe to tracked stocks and selected chart stock
   useEffect(() => {
+    if (!isMounted) return;
+
     const symbolsToWatch = new Set(trackedStockSymbols);
     if (selectedSymbolForChart) {
       symbolsToWatch.add(selectedSymbolForChart);
     }
     
-    symbolsToWatch.forEach(symbol => subscribeToSymbol(symbol));
+    const symbolsArray = Array.from(symbolsToWatch);
+    symbolsArray.forEach(subscribeToSymbol);
+    if (symbolsArray.length > 0) {
+      console.log('[TrackerPage] Initial data fetch for symbols:', symbolsArray);
+      refreshStockData(symbolsArray);
+    }
+
     return () => {
-      symbolsToWatch.forEach(symbol => unsubscribeFromSymbol(symbol));
+      symbolsArray.forEach(unsubscribeFromSymbol);
     };
-  }, [trackedStockSymbols, selectedSymbolForChart, subscribeToSymbol, unsubscribeFromSymbol]);
+  }, [isMounted, trackedStockSymbols, selectedSymbolForChart, subscribeToSymbol, unsubscribeFromSymbol, refreshStockData]);
 
   const allDisplayStocks = useMemo(() => {
     return initialMockStocksBase.map(baseStock => {
       const rtData = realtimeStockData[baseStock.symbol];
-      return rtData ? { ...baseStock, ...rtData } : baseStock;
+      return (isMounted && rtData) ? { ...baseStock, ...rtData } : baseStock;
     });
-  }, [realtimeStockData]);
+  }, [realtimeStockData, isMounted]);
 
   const trackedStocks: Stock[] = useMemo(() => {
     return Array.from(trackedStockSymbols)
       .map(symbol => {
         const base = initialMockStocksBase.find(s => s.symbol === symbol);
         const rt = realtimeStockData[symbol];
-        if (rt) return { ...base, ...rt, name: base?.name || rt.symbol, logoUrl: base?.logoUrl, chartData: base?.chartData } as Stock;
+        if (isMounted && rt) return { ...base, ...rt, name: base?.name || rt.symbol, logoUrl: base?.logoUrl, dataAiHint: base?.dataAiHint, chartData: rt.chartData || base?.chartData } as Stock;
         if (base) return base;
         return null;
       })
       .filter(Boolean) as Stock[];
-  }, [trackedStockSymbols, realtimeStockData]);
+  }, [trackedStockSymbols, realtimeStockData, isMounted]);
 
   const selectedStockForChartData = useMemo(() => {
     if (!selectedSymbolForChart) return null;
     const base = initialMockStocksBase.find(s => s.symbol === selectedSymbolForChart);
     const rt = realtimeStockData[selectedSymbolForChart];
-    if (rt) return { ...base, ...rt, name: base?.name || rt.symbol, logoUrl: base?.logoUrl, chartData: base?.chartData } as Stock;
+    if (isMounted && rt) return { ...base, ...rt, name: base?.name || rt.symbol, logoUrl: base?.logoUrl, dataAiHint: base?.dataAiHint, chartData: rt.chartData || base?.chartData } as Stock;
     return base || null;
-  }, [selectedSymbolForChart, realtimeStockData]);
+  }, [selectedSymbolForChart, realtimeStockData, isMounted]);
 
 
   const handleAddStock = (stockSymbol: string) => {
-    setTrackedStockSymbols(prev => new Set(prev).add(stockSymbol));
+    if (trackedStockSymbols.has(stockSymbol)) {
+        setSearchTerm('');
+        return; // Already tracked
+    }
+    setTrackedStockSymbols(prev => {
+        const newSet = new Set(prev).add(stockSymbol);
+        subscribeToSymbol(stockSymbol); // Subscribe to context
+        refreshStockData(stockSymbol); // Fetch data for the new stock
+        return newSet;
+    });
     if (!selectedSymbolForChart) {
       setSelectedSymbolForChart(stockSymbol);
     }
@@ -84,11 +107,22 @@ export default function TrackerPage() {
     setTrackedStockSymbols(prev => {
       const newSet = new Set(prev);
       newSet.delete(stockSymbol);
+      unsubscribeFromSymbol(stockSymbol); // Unsubscribe from context
       if (selectedSymbolForChart === stockSymbol) {
         setSelectedSymbolForChart(newSet.size > 0 ? newSet.values().next().value : null);
       }
       return newSet;
     });
+  };
+  
+  const handleRefreshAllTracked = () => {
+    const symbolsToRefresh = Array.from(trackedStockSymbols);
+    if (selectedSymbolForChart && !symbolsToRefresh.includes(selectedSymbolForChart)){
+        symbolsToRefresh.push(selectedSymbolForChart);
+    }
+    if (symbolsToRefresh.length > 0) {
+        refreshStockData(symbolsToRefresh);
+    }
   };
 
   const filteredSearchableStocks = allDisplayStocks
@@ -97,7 +131,7 @@ export default function TrackerPage() {
     .slice(0, 5);
 
 
-  if (isLoadingRealtime && trackedStocks.length === 0 && !selectedSymbolForChart) {
+  if (!isMounted && isLoadingData) {
      return (
         <div className="flex h-screen w-full items-center justify-center">
             <div className="text-center">
@@ -111,26 +145,27 @@ export default function TrackerPage() {
     );
   }
   
-  if (realtimeError) {
-     return (
-        <div className="flex h-screen w-full items-center justify-center">
-            <Alert variant="destructive" className="max-w-md">
-                <AlertCircle className="h-4 w-4" />
-                <AlertTitle>Real-time Data Error</AlertTitle>
-                <AlertDescription>{realtimeError} Please check your API key or network connection.</AlertDescription>
-            </Alert>
-        </div>
-     )
-  }
-
   return (
     <div className="w-full">
       <PageHeader
         title="Live Stock Tracker"
-        description="Monitor stock prices and performance. Real-time data updates via WebSocket."
+        description="Monitor stock prices and performance. Data fetched from Alpha Vantage."
         icon={LucideLineChart}
+        actions={
+             <Button onClick={handleRefreshAllTracked} disabled={isLoadingData} variant="outline">
+                <RefreshCw className={cn("mr-2 h-4 w-4", isLoadingData && "animate-spin")} />
+                Refresh Tracked
+            </Button>
+        }
       />
-       {isLoadingRealtime && <p className="text-sm text-muted-foreground mb-4">Connecting to real-time updates...</p>}
+       {isLoadingData && isMounted && <p className="text-sm text-muted-foreground mb-4">Fetching latest data...</p>}
+       {dataError && isMounted && (
+        <Alert variant="destructive" className="mb-4">
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>Data Fetching Error</AlertTitle>
+            <AlertDescription>{dataError} Some data might be outdated or unavailable. This could be due to API limits.</AlertDescription>
+        </Alert>
+      )}
 
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -143,15 +178,17 @@ export default function TrackerPage() {
               {selectedStockForChartData && (
                 <CardDescription>
                   Current Price: {formatCurrency(selectedStockForChartData.price)}
-                  <span className={cn("ml-2", selectedStockForChartData.change >= 0 ? 'text-green-500' : 'text-red-500')}>
-                     ({selectedStockForChartData.change >= 0 ? '+' : ''}{formatCurrency(selectedStockForChartData.change)} / {formatPercentage(selectedStockForChartData.changePercent, 2)})
-                  </span>
-                   {isLoadingRealtime && trackedStockSymbols.has(selectedStockForChartData.symbol) && <span className="ml-2 text-xs">(Updating...)</span>}
+                  {isMounted && selectedStockForChartData.change !== undefined ? (
+                    <span className={cn("ml-2", selectedStockForChartData.change >= 0 ? 'text-green-500' : 'text-red-500')}>
+                        ({selectedStockForChartData.change >= 0 ? '+' : ''}{formatCurrency(selectedStockForChartData.change)} / {formatPercentage(selectedStockForChartData.changePercent, 2)})
+                    </span>
+                  ) : <span className="ml-1">(...)</span>}
+                   {isLoadingData && selectedSymbolForChart === selectedStockForChartData.symbol && <span className="ml-2 text-xs">(Updating...)</span>}
                 </CardDescription>
               )}
             </CardHeader>
             <CardContent>
-              {selectedStockForChartData && selectedStockForChartData.chartData && selectedStockForChartData.chartData.length > 1 ? (
+              {isMounted && selectedStockForChartData && selectedStockForChartData.chartData && selectedStockForChartData.chartData.length > 1 ? (
                  <ChartContainer config={chartConfig} className="h-[300px] w-full">
                   <LineChart data={selectedStockForChartData.chartData} margin={{ top: 5, right: 20, left: -20, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} />
@@ -200,7 +237,7 @@ export default function TrackerPage() {
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="max-w-md"
                 />
-                <Button variant="outline" type="button"><Search className="mr-2 h-4 w-4"/> Search</Button>
+                {/* Search button is not strictly necessary if results appear live */}
               </div>
               {searchTerm && filteredSearchableStocks.length > 0 && (
                 <div className="border rounded-md max-h-48 overflow-y-auto">
