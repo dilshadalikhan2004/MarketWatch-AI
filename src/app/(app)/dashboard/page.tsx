@@ -13,7 +13,7 @@ import { NewsCard } from '@/components/common/NewsCard';
 import { mockNews, mockMarketMovers as initialMarketMovers, mockSentimentData, mockPortfolio as basePortfolio, mockStocks } from '@/lib/mock-data';
 import type { Stock, NewsArticle, MarketMover, SentimentDataPoint, PortfolioPosition as PortfolioPositionType } from '@/lib/types';
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
-import { Bar, BarChart as RechartsBarChart, CartesianGrid, XAxis, YAxis, Line, LineChart as RechartsLineChart, Cell } from 'recharts'; // Added Cell
+import { Bar, BarChart as RechartsBarChart, CartesianGrid, XAxis, YAxis, Line, LineChart as RechartsLineChart, Cell } from 'recharts';
 import { formatCurrency, formatPercentage } from '@/lib/formatters';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
@@ -38,40 +38,43 @@ interface DisplayPortfolioPosition extends PortfolioPositionType {
 }
 
 export default function DashboardPage() {
-  const { stockData: realtimeStockData, subscribeToSymbol, unsubscribeFromSymbol, refreshStockData, isLoading: isLoadingData, error: dataError } = useRealtimeStockData();
+  const { stockData: realtimeStockData, subscribeToSymbol, unsubscribeFromSymbol, refreshStockData, isLoading: isLoadingRealtime, error: dataError } = useRealtimeStockData();
   const [isMounted, setIsMounted] = useState(false);
 
-  // Symbols to track on the dashboard
-  const dashboardTrackedSymbols = useMemo(() => [
-    mockStocks.length > 0 ? mockStocks[0].symbol : '', // For Market Overview
-    ...basePortfolio.map(p => p.symbol), // For Portfolio Snapshot
+  const marketOverviewStockSymbol = useMemo(() => mockStocks.length > 0 ? mockStocks[0].symbol : '', []);
+
+  // Symbols for which data will be fetched by the "Refresh Data" button
+  const allDashboardSymbolsToRefresh = useMemo(() => Array.from(new Set([
+    marketOverviewStockSymbol,
+    ...basePortfolio.map(p => p.symbol),
     ...initialMarketMovers.gainers.map(m => m.symbol),
     ...initialMarketMovers.losers.map(m => m.symbol),
     ...initialMarketMovers.active.map(m => m.symbol),
-  ].filter(Boolean), []); // Filter out potential empty string if mockStocks is empty
+  ].filter(Boolean))), [marketOverviewStockSymbol]);
 
 
   useEffect(() => {
     setIsMounted(true);
-    const uniqueSymbols = Array.from(new Set(dashboardTrackedSymbols));
-    uniqueSymbols.forEach(subscribeToSymbol);
-    if (uniqueSymbols.length > 0) {
-        console.log('[DashboardPage] Initial data fetch for symbols:', uniqueSymbols);
-        refreshStockData(uniqueSymbols);
+    // Subscribe to all relevant symbols for potential updates
+    allDashboardSymbolsToRefresh.forEach(subscribeToSymbol);
+
+    // Initial automatic fetch ONLY for the market overview stock
+    if (marketOverviewStockSymbol) {
+        console.log('[DashboardPage] Initial auto-fetch for market overview stock:', marketOverviewStockSymbol);
+        refreshStockData([marketOverviewStockSymbol]);
     }
+
     return () => {
-      uniqueSymbols.forEach(unsubscribeFromSymbol);
+      allDashboardSymbolsToRefresh.forEach(unsubscribeFromSymbol);
     };
-  }, [subscribeToSymbol, unsubscribeFromSymbol, refreshStockData, dashboardTrackedSymbols]);
+  }, [isMounted, marketOverviewStockSymbol, subscribeToSymbol, unsubscribeFromSymbol, refreshStockData, allDashboardSymbolsToRefresh]);
 
-
-  const marketOverviewStockSymbol = useMemo(() => mockStocks.length > 0 ? mockStocks[0].symbol : '', []);
 
   const marketOverviewStock = useMemo(() => {
     if (!marketOverviewStockSymbol) return null;
     const baseStock = mockStocks.find(s => s.symbol === marketOverviewStockSymbol);
     const rtData = realtimeStockData[marketOverviewStockSymbol];
-    if (rtData && isMounted) { // Only use rtData if component is mounted to avoid hydration issues with initial data
+    if (isMounted && rtData && rtData.price !== undefined) { // Check if rtData has price
       return { ...baseStock, ...rtData, name: baseStock?.name || rtData.symbol, logoUrl: baseStock?.logoUrl, dataAiHint: baseStock?.dataAiHint, chartData: rtData.chartData || baseStock?.chartData || [] } as Stock;
     }
     return baseStock || null;
@@ -82,8 +85,8 @@ export default function DashboardPage() {
     return basePortfolio.map(pos => {
       const baseStockInfo = mockStocks.find(s => s.symbol === pos.symbol);
       const currentRealtimeData = realtimeStockData[pos.symbol];
-      // Use realtime price if available and mounted, otherwise fallback
-      const currentPrice = (isMounted && currentRealtimeData?.price) ? currentRealtimeData.price : (baseStockInfo?.price || pos.avgPurchasePrice);
+      
+      const currentPrice = (isMounted && currentRealtimeData?.price !== undefined) ? currentRealtimeData.price : (baseStockInfo?.price || pos.avgPurchasePrice);
       
       const initialCost = pos.shares * pos.avgPurchasePrice;
       const marketValue = pos.shares * currentPrice;
@@ -92,9 +95,9 @@ export default function DashboardPage() {
 
       return {
         ...pos,
-        name: baseStockInfo?.name || pos.symbol,
-        logoUrl: baseStockInfo?.logoUrl,
-        dataAiHint: baseStockInfo?.dataAiHint,
+        name: currentRealtimeData?.name || baseStockInfo?.name || pos.symbol,
+        logoUrl: currentRealtimeData?.logoUrl || baseStockInfo?.logoUrl,
+        dataAiHint: currentRealtimeData?.dataAiHint || baseStockInfo?.dataAiHint,
         currentPrice: currentPrice,
         marketValue,
         initialCost,
@@ -113,29 +116,46 @@ export default function DashboardPage() {
   }, [portfolioData]);
   
   const currentMarketMovers = useMemo(() => {
-    const updateMoverList = (list: MarketMover[]) => {
+    const updateMoverList = (list: MarketMover[]): MarketMover[] => {
       return list.map(mover => {
+        const baseMoverInfo = mockStocks.find(s => s.symbol === mover.symbol);
         const rtData = realtimeStockData[mover.symbol];
-        return (isMounted && rtData) ? { ...mover, ...rtData } : mover;
+        if (isMounted && rtData && rtData.price !== undefined) {
+          return { ...baseMoverInfo, ...rtData, type: mover.type } as MarketMover;
+        }
+        return { ...baseMoverInfo, ...mover } as MarketMover; // Fallback to mover from initialMarketMovers or baseMock
       })
     };
     const gainers = updateMoverList(initialMarketMovers.gainers).sort((a,b) => (b.changePercent || 0) - (a.changePercent || 0));
     const losers = updateMoverList(initialMarketMovers.losers).sort((a,b) => (a.changePercent || 0) - (b.changePercent || 0));
-    const active = updateMoverList(initialMarketMovers.active).sort((a,b) => 
-        (realtimeStockData[b.symbol]?.dailyVolume || parseFloat(b.volume?.replace(/[^0-9.]/g, '') || '0')) - 
-        (realtimeStockData[a.symbol]?.dailyVolume || parseFloat(a.volume?.replace(/[^0-9.]/g, '') || '0'))
-    );
+    const active = updateMoverList(initialMarketMovers.active).sort((a,b) => {
+        const volumeA = realtimeStockData[a.symbol]?.dailyVolume ?? parseFloat(a.volume?.replace(/[^0-9.]/g, '') || '0');
+        const volumeB = realtimeStockData[b.symbol]?.dailyVolume ?? parseFloat(b.volume?.replace(/[^0-9.]/g, '') || '0');
+        return volumeB - volumeA;
+    });
     return {gainers, losers, active};
   }, [realtimeStockData, isMounted]);
 
 
   const renderMarketMoverCard = (mover: MarketMover) => {
+    // Ensure mover always has some base data even if rtData is not fully populated yet
+    const baseStock = mockStocks.find(s => s.symbol === mover.symbol) || mover;
     const rtData = realtimeStockData[mover.symbol];
-    const displayData = (isMounted && rtData) ? { ...mover, ...rtData } : mover;
-    return <MinimalStockCard key={mover.symbol} stock={displayData} className="w-full" />;
+    const displayData = (isMounted && rtData && rtData.price !== undefined) 
+      ? { ...baseStock, ...rtData, type: mover.type } 
+      : { ...baseStock, type: mover.type };
+      
+    return <MinimalStockCard key={mover.symbol} stock={displayData as Stock} className="w-full" />;
+  };
+
+  const handleRefreshAllDashboardData = () => {
+    if (allDashboardSymbolsToRefresh.length > 0) {
+        console.log('[DashboardPage] Manual refresh triggered for symbols:', allDashboardSymbolsToRefresh);
+        refreshStockData(allDashboardSymbolsToRefresh);
+    }
   };
   
-  if (!isMounted && isLoadingData) { // Show loading skeleton if not mounted and data is loading
+  if (!isMounted && isLoadingRealtime) {
     return (
         <div className="flex h-screen w-full items-center justify-center">
             <div className="text-center">
@@ -153,21 +173,21 @@ export default function DashboardPage() {
     <div className="flex w-full flex-col gap-6">
       <PageHeader
         title="Dashboard Overview"
-        description="Market insights at a glance. Data fetched from Alpha Vantage."
+        description="Market insights at a glance. Data from Alpha Vantage (API limits apply)."
         icon={AreaChart}
         actions={
-          <Button onClick={() => refreshStockData(Array.from(new Set(dashboardTrackedSymbols)))} disabled={isLoadingData} variant="outline">
-            <RefreshCw className={cn("mr-2 h-4 w-4", isLoadingData && "animate-spin")} />
+          <Button onClick={handleRefreshAllDashboardData} disabled={isLoadingRealtime} variant="outline">
+            <RefreshCw className={cn("mr-2 h-4 w-4", isLoadingRealtime && "animate-spin")} />
             Refresh Data
           </Button>
         }
       />
-      {isLoadingData && isMounted && <p className="text-sm text-muted-foreground">Fetching latest data...</p>}
+      {isLoadingRealtime && isMounted && <p className="text-sm text-muted-foreground">Fetching latest data from Alpha Vantage...</p>}
       {dataError && isMounted && (
         <Alert variant="destructive" className="max-w-full">
             <AlertCircle className="h-4 w-4" />
             <AlertTitle>Data Fetching Error</AlertTitle>
-            <AlertDescription>{dataError} Some data might be outdated or unavailable. This could be due to API limits.</AlertDescription>
+            <AlertDescription>{dataError} Some data might be outdated or unavailable. This could be due to API limits with Alpha Vantage.</AlertDescription>
         </Alert>
       )}
 
@@ -190,9 +210,9 @@ export default function DashboardPage() {
                       {' '} ({marketOverviewStock.change >= 0 ? '+' : ''}{formatCurrency(marketOverviewStock.change)} / {formatPercentage(marketOverviewStock.changePercent, 2)})
                     </span>
                   ) : (
-                    <span className="ml-1">(...)</span> 
+                    <span className="ml-1">(Mock data or loading...)</span> 
                   )}
-                   {isLoadingData && marketOverviewStockSymbol === marketOverviewStock?.symbol && <span className="ml-2 text-xs">(Updating...)</span>}
+                   {isLoadingRealtime && allDashboardSymbolsToRefresh.includes(marketOverviewStockSymbol) && <span className="ml-2 text-xs">(Updating...)</span>}
                 </CardDescription>
               )}
             </CardHeader>
@@ -224,14 +244,14 @@ export default function DashboardPage() {
           <Card className="shadow-lg">
             <CardHeader>
               <CardTitle className="flex items-center gap-2"><Wallet className="h-5 w-5 text-primary" />Portfolio Snapshot</CardTitle>
-              <CardDescription>A sample overview of your investment performance. Prices from Alpha Vantage (may be delayed).</CardDescription>
+              <CardDescription>A sample overview of your investment performance. Click "Refresh Data" for latest Alpha Vantage prices (API limits apply).</CardDescription>
             </CardHeader>
             <CardContent>
               <Alert variant="default" className="mb-4 bg-blue-50 border-blue-200 dark:bg-blue-900/30 dark:border-blue-700">
                 <AlertCircle className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                <AlertTitle className="text-blue-700 dark:text-blue-300 font-semibold">Sample Data</AlertTitle>
+                <AlertTitle className="text-blue-700 dark:text-blue-300 font-semibold">Sample Data & API Limits</AlertTitle>
                 <AlertDescription className="text-blue-600 dark:text-blue-400">
-                  The portfolio data displayed below is for demonstration purposes only, using dynamic mock prices or delayed data from Alpha Vantage.
+                  This portfolio uses sample positions. Prices update from Alpha Vantage when "Refresh Data" is clicked, subject to API limits.
                 </AlertDescription>
               </Alert>
               {isMounted && portfolioData.length > 0 ? (
@@ -308,6 +328,7 @@ export default function DashboardPage() {
           <Card className="shadow-lg">
             <CardHeader>
               <CardTitle>Market Movers</CardTitle>
+              <CardDescription>Top movers. Click "Refresh Data" for latest.</CardDescription>
             </CardHeader>
             <CardContent>
               <Tabs defaultValue="gainers" className="w-full">
@@ -317,13 +338,13 @@ export default function DashboardPage() {
                   <TabsTrigger value="active" className="flex-1 w-full"><Zap className="mr-1 h-4 w-4" />Active</TabsTrigger>
                 </TabsList>
                 <TabsContent value="gainers" className="mt-4 space-y-3">
-                  {isMounted ? currentMarketMovers.gainers.map(renderMarketMoverCard) : <p>Loading...</p>}
+                  {isMounted && currentMarketMovers.gainers.length > 0 ? currentMarketMovers.gainers.map(renderMarketMoverCard) : <p className="text-muted-foreground text-center py-2">No gainers data or click refresh.</p>}
                 </TabsContent>
                 <TabsContent value="losers" className="mt-4 space-y-3">
-                   {isMounted ? currentMarketMovers.losers.map(renderMarketMoverCard) : <p>Loading...</p>}
+                   {isMounted && currentMarketMovers.losers.length > 0 ? currentMarketMovers.losers.map(renderMarketMoverCard) : <p className="text-muted-foreground text-center py-2">No losers data or click refresh.</p>}
                 </TabsContent>
                 <TabsContent value="active" className="mt-4 space-y-3">
-                   {isMounted ? currentMarketMovers.active.map(renderMarketMoverCard) : <p>Loading...</p>}
+                   {isMounted && currentMarketMovers.active.length > 0 ? currentMarketMovers.active.map(renderMarketMoverCard) : <p className="text-muted-foreground text-center py-2">No active data or click refresh.</p>}
                 </TabsContent>
               </Tabs>
             </CardContent>
@@ -374,3 +395,4 @@ export default function DashboardPage() {
     </div>
   );
 }
+
