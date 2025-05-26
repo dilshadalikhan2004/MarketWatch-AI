@@ -44,20 +44,25 @@ export const RealtimeStockProvider: React.FC<RealtimeStockProviderProps> = ({ ch
   const [subscribedSymbols, setSubscribedSymbols] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true); // True initially until WebSocket attempts connection
   const [error, setError] = useState<string | null>(null);
-  const [apiKey] = useState(process.env.POLYGON_API_KEY || process.env.NEXT_PUBLIC_POLYGON_API_KEY);
+  // Ensure the environment variable name matches exactly what's in your .env file
+  const [apiKey] = useState(process.env.NEXT_PUBLIC_POLYGON_API_KEY);
 
 
   useEffect(() => {
+    // More prominent check for API key absence
     if (!apiKey) {
-      setError("Polygon API key is not configured. Real-time updates are disabled.");
+      const errorMessage = "CRITICAL: Polygon API key (NEXT_PUBLIC_POLYGON_API_KEY) is not configured or not loaded from .env. Real-time updates are disabled.";
+      setError(errorMessage);
       setIsLoading(false);
-      console.warn("POLYGON_API_KEY is not set in .env file. Real-time updates will not work.");
+      console.error(errorMessage, "Please ensure the key is in your .env file and the Next.js server was restarted.");
       return;
     }
     
+    // Temporary log for debugging - REMOVE AFTER DEBUGGING
+    console.log('Attempting to use Polygon API Key:', apiKey ? apiKey.substring(0, 5) + "..." : "API Key is undefined/empty");
+
+
     if (subscribedSymbols.size === 0) {
-        // If no symbols are subscribed, we can close any existing connection or simply not connect.
-        // For now, we'll just ensure loading is false if we're not trying to connect.
         setIsLoading(false);
         return;
     }
@@ -65,85 +70,72 @@ export const RealtimeStockProvider: React.FC<RealtimeStockProviderProps> = ({ ch
     setIsLoading(true);
     setError(null);
 
-    // TODO: Replace with actual Polygon.io WebSocket client initialization
-    // Example: const ws = new WebSocket('wss://socket.polygon.io/stocks');
-    // You might use the polygon.io-client-js library for easier handling.
-
     console.log(`Attempting to connect to WebSocket for symbols: ${Array.from(subscribedSymbols).join(', ')}`);
 
-    // --- START POLYGON.IO WEBSOCKET PLACEHOLDER ---
-    // This is a conceptual placeholder. You'll need to implement this with Polygon.io's actual API.
-    // For example, using the 'polygon.io-client-js':
-    // import { restClient, websocketClient } from '@polygon.io/client-js';
-    // const ws = websocketClient(apiKey).stocks();
-
-    const ws = new WebSocket('wss://socket.polygon.io/stocks'); // Replace with actual endpoint if different
+    const ws = new WebSocket('wss://socket.polygon.io/stocks');
 
     ws.onopen = () => {
       console.log('WebSocket connected to Polygon.io');
       setIsLoading(false);
       ws.send(JSON.stringify({ action: 'auth', params: apiKey }));
       
-      // Subscribe to all symbols in the subscribedSymbols set
-      const symbolsToSubscribe = Array.from(subscribedSymbols).join(',');
-      if (symbolsToSubscribe) {
-        // Example: Subscribe to trades for these symbols
-        // Polygon's specific subscription message format will be needed here.
-        // This is a generic example, check Polygon docs for correct format for trades/quotes.
-        // For trades (T) and quotes (Q)
-        // ws.send(JSON.stringify({ action: 'subscribe', params: `T.${symbolsToSubscribe},Q.${symbolsToSubscribe}` }));
-
-        // Simplified subscription for aggregates (AM for minute aggregates)
-         ws.send(JSON.stringify({ action: 'subscribe', params: Array.from(subscribedSymbols).map(s => `AM.${s}`).join(',') }));
-        console.log(`Subscribed to minute aggregates for: ${symbolsToSubscribe}`);
+      const symbolsToSubscribeString = Array.from(subscribedSymbols).map(s => `AM.${s}`).join(',');
+      if (symbolsToSubscribeString) {
+         ws.send(JSON.stringify({ action: 'subscribe', params: symbolsToSubscribeString }));
+        console.log(`Sent subscription request for minute aggregates: ${symbolsToSubscribeString}`);
       }
     };
 
     ws.onmessage = (event) => {
       try {
         const messages = JSON.parse(event.data as string);
-        // Polygon sends an array of messages
         (Array.isArray(messages) ? messages : [messages]).forEach(msg => {
-          // console.log('WebSocket message received:', msg);
-          // Example: 'AM' for minute aggregates
-          // [ { ev: 'AM', sym: 'AAPL', v: 100, vw: 150.00, o: 150.00, c: 150.01, h: 150.02, l: 149.99, t: 1633028400000, n: 5 } ]
           if (msg.ev === 'status') {
-            console.log('Polygon status message:', msg.message);
+            console.log('Polygon status message:', msg.message, '(Status:', msg.status, ')');
             if (msg.status === 'auth_failed') {
-                setError('Polygon WebSocket authentication failed.');
+                setError('Polygon WebSocket authentication failed. Please check your API key, subscription, or network connection.');
                 ws.close();
+            } else if (msg.status === 'auth_success') {
+                console.log('Polygon WebSocket authentication successful.');
+            } else if (msg.status === 'success' && msg.message.startsWith('subscribed to')) {
+                console.log('Successfully subscribed to symbols:', msg.message);
             }
-          } else if (msg.sym && (msg.ev === 'AM' || msg.ev === 'T' || msg.ev === 'Q')) { // AM for Minute Aggregates, T for Trades, Q for Quotes
+          } else if (msg.sym && (msg.ev === 'AM' || msg.ev === 'T' || msg.ev === 'Q')) {
             const symbol = msg.sym;
             
             setStockData(prevData => {
-              const currentStock = prevData[symbol] || mockStocks.find(s => s.symbol === symbol) || { symbol, name: symbol, price: 0, change: 0, changePercent: 0 };
+              const baseStockInfo = mockStocks.find(s => s.symbol === symbol);
+              const currentStock = prevData[symbol] || baseStockInfo || { symbol, name: symbol, price: 0, change: 0, changePercent: 0, previousClose: 0 };
               
               let newPrice = currentStock.price;
-              if (msg.ev === 'AM' && msg.c !== undefined) { // Minute aggregate close price
+              if (msg.ev === 'AM' && msg.c !== undefined) {
                 newPrice = msg.c;
-              } else if (msg.ev === 'T' && msg.p !== undefined) { // Trade price
+              } else if (msg.ev === 'T' && msg.p !== undefined) {
                 newPrice = msg.p;
-              } else if (msg.ev === 'Q' && msg.bp !== undefined) { // Quote bid price (or ask price: msg.ap)
-                newPrice = msg.bp; // Or choose mid-price, etc.
+              } else if (msg.ev === 'Q' && msg.bp !== undefined) {
+                newPrice = msg.bp; 
               }
 
-              const previousClose = currentStock.previousClose || (msg.ev === 'AM' && msg.o) || currentStock.price; // Use open of minute bar if available
-              const change = newPrice - previousClose;
-              const changePercent = previousClose !== 0 ? (change / previousClose) : 0;
+              const previousCloseToUse = currentStock.previousClose || (msg.ev === 'AM' && msg.o) || baseStockInfo?.previousClose || newPrice;
+              const change = newPrice - previousCloseToUse;
+              const changePercent = previousCloseToUse !== 0 ? (change / previousCloseToUse) : 0;
 
               return {
                 ...prevData,
                 [symbol]: {
                   ...currentStock,
+                  name: currentStock.name || baseStockInfo?.name || symbol,
+                  logoUrl: currentStock.logoUrl || baseStockInfo?.logoUrl,
+                  dataAiHint: currentStock.dataAiHint || baseStockInfo?.dataAiHint,
                   price: newPrice,
                   lastPrice: newPrice,
                   change: parseFloat(change.toFixed(2)),
-                  changePercent: parseFloat(changePercent.toFixed(4)),
-                  volume: msg.v !== undefined ? (currentStock.volume || '0') + msg.v : currentStock.volume, // Accumulate volume if possible or use daily
-                  dailyVolume: msg.v, // Or from a different field based on msg type
+                  changePercent: parseFloat(changePercent.toFixed(4)), // Store as decimal
+                  volume: msg.v !== undefined ? ((prevData[symbol]?.dailyVolume || 0) + msg.v).toString() : currentStock.volume,
+                  dailyVolume: msg.v !== undefined ? (prevData[symbol]?.dailyVolume || 0) + msg.v : currentStock.dailyVolume,
                   timestamp: msg.t || Date.now(),
-                  previousClose: previousClose, // Store for next update
+                  previousClose: previousCloseToUse,
+                  chartData: currentStock.chartData || baseStockInfo?.chartData || [],
                 },
               };
             });
@@ -154,33 +146,34 @@ export const RealtimeStockProvider: React.FC<RealtimeStockProviderProps> = ({ ch
       }
     };
 
-    ws.onerror = (err) => {
-      console.error('WebSocket error:', err);
+    ws.onerror = (errEvent) => {
+      console.error('WebSocket error:', errEvent);
       setError('WebSocket connection error. Real-time updates may be unavailable.');
       setIsLoading(false);
     };
 
     ws.onclose = (event) => {
-      console.log('WebSocket disconnected from Polygon.io', event.reason);
-      // Optionally, you might want to implement a reconnect strategy here.
-      // For simplicity, we're not doing that in this example.
+      console.log('WebSocket disconnected from Polygon.io. Code:', event.code, 'Reason:', event.reason, 'Was clean:', event.wasClean);
       if (!event.wasClean) {
-        setError('WebSocket connection closed unexpectedly.');
+        setError('WebSocket connection closed unexpectedly. Real-time updates stopped.');
       }
       setIsLoading(false);
     };
-    // --- END POLYGON.IO WEBSOCKET PLACEHOLDER ---
 
     return () => {
-      console.log('Closing WebSocket connection');
-      ws.close();
+      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+        console.log('Closing WebSocket connection');
+        ws.close();
+      }
     };
-  }, [subscribedSymbols, apiKey]); // Re-run effect if subscribedSymbols or apiKey changes
+  }, [subscribedSymbols, apiKey]); 
 
   const subscribeToSymbol = useCallback((symbol: string) => {
     setSubscribedSymbols(prev => {
+      if (prev.has(symbol)) return prev; // Already subscribed
       const newSet = new Set(prev);
       newSet.add(symbol);
+      console.log('Context: Added to subscription queue:', symbol);
       return newSet;
     });
   }, []);
@@ -188,9 +181,12 @@ export const RealtimeStockProvider: React.FC<RealtimeStockProviderProps> = ({ ch
   const unsubscribeFromSymbol = useCallback((symbol: string) => {
     setSubscribedSymbols(prev => {
       const newSet = new Set(prev);
-      newSet.delete(symbol);
-      // TODO: Send unsubscribe message to WebSocket if Polygon supports it
-      // ws.send(JSON.stringify({ action: 'unsubscribe', params: `AM.${symbol}` }));
+      if (newSet.delete(symbol)) {
+        console.log('Context: Removed from subscription queue:', symbol);
+        // Actual unsubscribe message to WebSocket should happen in the useEffect cleanup
+        // or when the ws connection is active and symbols change.
+        // For simplicity here, the main useEffect handles subscriptions based on subscribedSymbols set.
+      }
       return newSet;
     });
   }, []);
@@ -201,3 +197,4 @@ export const RealtimeStockProvider: React.FC<RealtimeStockProviderProps> = ({ ch
     </RealtimeStockContext.Provider>
   );
 };
+
