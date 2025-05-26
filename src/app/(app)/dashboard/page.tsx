@@ -7,13 +7,13 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { AreaChart, BarChart3, Newspaper, TrendingUp, TrendingDown, Zap, ArrowRight, AlertCircle, Wallet, RefreshCw, Cell } from 'lucide-react';
+import { AreaChart, BarChart3, Newspaper, TrendingUp, TrendingDown, Zap, ArrowRight, AlertCircle, Wallet, RefreshCw } from 'lucide-react';
 import { MinimalStockCard } from '@/components/common/StockCard';
 import { NewsCard } from '@/components/common/NewsCard';
 import { generateMockNews, mockMarketMovers as initialMarketMovers, mockSentimentData, mockPortfolio as basePortfolio, mockStocks } from '@/lib/mock-data';
 import type { Stock, NewsArticle, MarketMover, SentimentDataPoint, PortfolioPosition as PortfolioPositionType } from '@/lib/types';
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
-import { Bar, BarChart as RechartsBarChart, CartesianGrid, XAxis, YAxis, Line, LineChart as RechartsLineChart } from 'recharts';
+import { Bar, BarChart as RechartsBarChart, CartesianGrid, XAxis, YAxis, Line, LineChart as RechartsLineChart, Cell } from 'recharts';
 import { formatCurrency, formatPercentage } from '@/lib/formatters';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
@@ -43,42 +43,44 @@ export default function DashboardPage() {
   const [recentNews, setRecentNews] = useState<NewsArticle[]>([]);
 
   const marketOverviewStockSymbol = useMemo(() => mockStocks.length > 0 ? mockStocks[0].symbol : '', []);
+  const selectedMarketSymbol = marketOverviewStockSymbol;
+
 
   const allDashboardSymbolsToRefresh = useMemo(() => Array.from(new Set([
-    marketOverviewStockSymbol,
+    selectedMarketSymbol,
     ...basePortfolio.map(p => p.symbol),
     ...initialMarketMovers.gainers.map(m => m.symbol),
     ...initialMarketMovers.losers.map(m => m.symbol),
     ...initialMarketMovers.active.map(m => m.symbol),
-  ].filter(Boolean))), [marketOverviewStockSymbol]);
+  ].filter(Boolean))), [selectedMarketSymbol]);
 
 
   useEffect(() => {
     setIsMounted(true);
-    setRecentNews(generateMockNews(6)); // Generate news on mount
+    setRecentNews(generateMockNews(6));
 
     allDashboardSymbolsToRefresh.forEach(subscribeToSymbol);
 
-    if (marketOverviewStockSymbol) {
-        console.log('[DashboardPage] Initial auto-fetch for market overview stock:', marketOverviewStockSymbol);
-        refreshStockData([marketOverviewStockSymbol]); // Fetch only for the main overview stock initially
+    if (selectedMarketSymbol) {
+        console.log('[DashboardPage] Initial auto-fetch for market overview stock:', selectedMarketSymbol);
+        refreshStockData([selectedMarketSymbol]);
     }
 
     return () => {
       allDashboardSymbolsToRefresh.forEach(unsubscribeFromSymbol);
     };
-  }, [isMounted, marketOverviewStockSymbol, subscribeToSymbol, unsubscribeFromSymbol, refreshStockData, allDashboardSymbolsToRefresh]);
+  }, [isMounted, selectedMarketSymbol, subscribeToSymbol, unsubscribeFromSymbol, refreshStockData, allDashboardSymbolsToRefresh]);
 
 
   const marketOverviewStock = useMemo(() => {
-    if (!marketOverviewStockSymbol) return null;
-    const baseStock = mockStocks.find(s => s.symbol === marketOverviewStockSymbol);
-    const rtData = realtimeStockData[marketOverviewStockSymbol];
+    if (!selectedMarketSymbol) return null;
+    const baseStock = mockStocks.find(s => s.symbol === selectedMarketSymbol);
+    const rtData = realtimeStockData[selectedMarketSymbol];
     if (isMounted && rtData && rtData.price !== undefined) {
       return { ...baseStock, ...rtData, name: baseStock?.name || rtData.symbol, logoUrl: baseStock?.logoUrl, dataAiHint: baseStock?.dataAiHint, chartData: rtData.chartData || baseStock?.chartData || [] } as Stock;
     }
     return baseStock || null;
-  }, [marketOverviewStockSymbol, realtimeStockData, isMounted]);
+  }, [selectedMarketSymbol, realtimeStockData, isMounted]);
   
 
   const portfolioData: DisplayPortfolioPosition[] = useMemo(() => {
@@ -155,7 +157,7 @@ export default function DashboardPage() {
     setRecentNews(generateMockNews(6)); // Also refresh news dates on manual refresh
   };
   
-  if (!isMounted && isLoadingRealtime) {
+  if (!isMounted && isLoadingRealtime && !marketOverviewStock) {
     return (
         <div className="flex h-screen w-full items-center justify-center">
             <div className="text-center">
@@ -199,7 +201,7 @@ export default function DashboardPage() {
           <Card className="shadow-lg">
             <CardHeader>
               <CardTitle className="flex items-center justify-between">
-                <span>Market Overview: {marketOverviewStock?.name || marketOverviewStockSymbol} ({marketOverviewStockSymbol})</span>
+                <span>Market Overview: {marketOverviewStock?.name || selectedMarketSymbol} ({selectedMarketSymbol})</span>
                 {marketOverviewStock?.logoUrl && <img src={marketOverviewStock.logoUrl} alt={`${marketOverviewStock.name} logo`} data-ai-hint={marketOverviewStock.dataAiHint || 'company logo'} className="h-8 w-8 rounded-full" />}
               </CardTitle>
               {marketOverviewStock && (
@@ -212,7 +214,7 @@ export default function DashboardPage() {
                   ) : (
                     <span className="ml-1">(Mock data or loading...)</span> 
                   )}
-                   {isLoadingRealtime && allDashboardSymbolsToRefresh.includes(marketOverviewStockSymbol || '') && <span className="ml-2 text-xs">(Updating...)</span>}
+                   {isLoadingRealtime && marketOverviewStock.symbol === selectedMarketSymbol && <span className="ml-2 text-xs">(Updating...)</span>}
                 </CardDescription>
               )}
             </CardHeader>
@@ -395,3 +397,5 @@ export default function DashboardPage() {
     </div>
   );
 }
+
+    
