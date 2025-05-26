@@ -98,7 +98,7 @@ export default function DashboardPage() {
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="w-full grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card className="lg:col-span-1">
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><BarChart3 className="h-5 w-5 text-primary" /> Market Movers</CardTitle>
@@ -167,4 +167,3 @@ export default function DashboardPage() {
     </div>
   );
 }
-
