@@ -73,7 +73,7 @@ export default function DashboardPage() {
   const newsSentimentData = aggregateNewsSentiment(news);
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="w-full flex flex-col gap-6">
       <PageHeader title="Market Dashboard" icon={AreaChart} description="Overview of market performance and key insights." />
 
       <Card>
@@ -167,3 +167,4 @@ export default function DashboardPage() {
     </div>
   );
 }
+
