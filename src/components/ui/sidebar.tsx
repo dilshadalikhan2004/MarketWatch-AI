@@ -1,3 +1,4 @@
+
 "use client"
 
 import * as React from "react"
@@ -260,10 +261,30 @@ const Sidebar = React.forwardRef<
 Sidebar.displayName = "Sidebar"
 
 const SidebarTrigger = React.forwardRef<
-  React.ElementRef<typeof Button>,
-  React.ComponentProps<typeof Button>
->(({ className, onClick, ...props }, ref) => {
-  const { toggleSidebar } = useSidebar()
+  HTMLButtonElement,
+  React.ComponentProps<typeof Button> // Accepts Button props, which includes asChild and children
+>(({ className, onClick, children, asChild, ...buttonProps }, ref) => {
+  const { toggleSidebar } = useSidebar();
+
+  const actualOnClick = (event: React.MouseEvent<HTMLButtonElement>) => {
+    if (onClick) {
+      onClick(event);
+    }
+    toggleSidebar();
+  };
+
+  if (asChild) {
+    return (
+      <Slot
+        ref={ref}
+        onClick={actualOnClick}
+        className={className}
+        {...buttonProps}
+      >
+        {children}
+      </Slot>
+    );
+  }
 
   return (
     <Button
@@ -272,18 +293,16 @@ const SidebarTrigger = React.forwardRef<
       variant="ghost"
       size="icon"
       className={cn("h-7 w-7", className)}
-      onClick={(event) => {
-        onClick?.(event)
-        toggleSidebar()
-      }}
-      {...props}
+      onClick={actualOnClick}
+      {...buttonProps} // asChild is not in buttonProps, so Button component's default asChild=false is used
     >
       <PanelLeft />
       <span className="sr-only">Toggle Sidebar</span>
     </Button>
-  )
-})
-SidebarTrigger.displayName = "SidebarTrigger"
+  );
+});
+SidebarTrigger.displayName = "SidebarTrigger";
+
 
 const SidebarRail = React.forwardRef<
   HTMLButtonElement,
