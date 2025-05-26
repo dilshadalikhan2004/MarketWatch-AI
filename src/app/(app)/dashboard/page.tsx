@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AreaChart, BarChart3, Newspaper, TrendingUp, TrendingDown, Activity } from "lucide-react";
 import { ChartContainer, ChartTooltip, ChartTooltipContent, ChartLegend, ChartLegendContent } from "@/components/ui/chart";
 import type { ChartConfig } from "@/components/ui/chart";
-import { Bar, BarChart as RechartsBarChart, CartesianGrid, XAxis, YAxis, ResponsiveContainer, Line, LineChart as RechartsLineChart, Cell } from "recharts"; // Renamed BarChart to RechartsBarChart
+import { Bar, BarChart as RechartsBarChart, CartesianGrid, XAxis, YAxis, ResponsiveContainer, Line, LineChart as RechartsLineChart, Cell } from "recharts";
 import React, { useEffect, useState } from "react";
 import { analyzeNewsSentimentAction } from "@/lib/actions/sentiment";
 import { useToast } from "@/hooks/use-toast";
@@ -49,12 +49,35 @@ export default function DashboardPage() {
     }, 5000); // Update prices every 5 seconds
     return () => clearInterval(interval);
   }, []);
-  
+
   const topGainers = [...stocks].sort((a, b) => b.changePercent - a.changePercent).slice(0, 5);
   const topLosers = [...stocks].sort((a, b) => a.changePercent - b.changePercent).slice(0, 5);
   const mostActive = [...stocks].sort((a, b) => (b.volume ?? 0) - (a.volume ?? 0)).slice(0, 5);
 
-  const marketOverviewData = stocks.slice(0,10).map(s => ({ month: s.symbol, desktop: s.price, mobile: (s.price * (1 + (s.changePercent/200))) }));
+  // Ensure data for LineChart always has a consistent length and structure
+  const baseMarketOverviewData = stocks.slice(0, 10).map((s, index) => ({
+    month: s.symbol, // Using symbol for x-axis, could be changed to index or date if available
+    desktop: s.price,
+    mobile: (s.price * (1 + (s.changePercent / 200))) // Example transformation
+  }));
+  
+  // Pad data if less than 2 points for LineChart to prevent errors
+  const minMarketDataPoints = 2;
+  let marketOverviewData = [...baseMarketOverviewData];
+  if (marketOverviewData.length > 0 && marketOverviewData.length < minMarketDataPoints) {
+    const lastPoint = marketOverviewData[marketOverviewData.length - 1];
+    for (let i = marketOverviewData.length; i < minMarketDataPoints; i++) {
+      // Create a new object for each padded point to avoid reference issues
+      marketOverviewData.push({ ...lastPoint, month: `Pad${i}-${lastPoint.month}` }); 
+    }
+  } else if (marketOverviewData.length === 0) {
+    // If there's no data at all, provide some dummy points so the chart can render
+     marketOverviewData = [
+        { month: 'NoData1', desktop: 0, mobile: 0 },
+        { month: 'NoData2', desktop: 0, mobile: 0 },
+     ];
+  }
+
 
   const handleAnalyzeSentiment = async (articleToAnalyze: NewsArticle) => {
     setAnalyzingArticleId(articleToAnalyze.id);
@@ -62,21 +85,21 @@ export default function DashboardPage() {
     if ('error' in result) {
       toast({ title: "Error", description: result.error, variant: "destructive" });
     } else {
-      setNews(prevNews => prevNews.map(n => 
+      setNews(prevNews => prevNews.map(n =>
         n.id === articleToAnalyze.id ? { ...n, sentiment: result.sentiment, sentimentScore: result.score, sentimentReason: result.reason } : n
       ));
       toast({ title: "Sentiment Analyzed", description: `Sentiment for "${articleToAnalyze.headline}" is ${result.sentiment}.` });
     }
     setAnalyzingArticleId(null);
   };
-  
+
   const newsSentimentData = aggregateNewsSentiment(news);
 
   return (
-    <div className="w-full flex flex-col gap-6">
+    <div className="flex w-full flex-col gap-6"> {/* Ensure full width and flex column layout */}
       <PageHeader title="Market Dashboard" icon={AreaChart} description="Overview of market performance and key insights." />
 
-      <Card>
+      <Card className="w-full"> {/* Ensure card takes full width */}
         <CardHeader>
           <CardTitle>Market Overview</CardTitle>
           <CardDescription>Price trends of top stocks.</CardDescription>
@@ -84,21 +107,27 @@ export default function DashboardPage() {
         <CardContent>
           <ChartContainer config={chartConfig} className="h-[250px] w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <RechartsLineChart data={marketOverviewData} margin={{ top: 5, right: 20, left: -20, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                <XAxis dataKey="month" stroke="hsl(var(--muted-foreground))" />
-                <YAxis stroke="hsl(var(--muted-foreground))" domain={['dataMin - 10', 'dataMax + 10']} tickFormatter={(value) => `$${value.toFixed(0)}`} />
-                <ChartTooltip content={<ChartTooltipContent hideLabel />} />
-                <ChartLegend content={<ChartLegendContent />} />
-                <Line type="monotone" dataKey="desktop" stroke="hsl(var(--chart-1))" strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey="mobile" stroke="hsl(var(--chart-2))" strokeWidth={2} dot={false} />
-              </RechartsLineChart>
+              {marketOverviewData.length >= minMarketDataPoints ? (
+                <RechartsLineChart data={marketOverviewData} margin={{ top: 5, right: 20, left: -20, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis dataKey="month" stroke="hsl(var(--muted-foreground))" />
+                  <YAxis stroke="hsl(var(--muted-foreground))" domain={['auto', 'auto']} tickFormatter={(value) => `$${Number(value).toFixed(0)}`} />
+                  <ChartTooltip content={<ChartTooltipContent hideLabel />} />
+                  <ChartLegend content={<ChartLegendContent />} />
+                  <Line type="monotone" dataKey="desktop" stroke="hsl(var(--chart-1))" strokeWidth={2} dot={false} name="Price 1" />
+                  <Line type="monotone" dataKey="mobile" stroke="hsl(var(--chart-2))" strokeWidth={2} dot={false} name="Price 2" />
+                </RechartsLineChart>
+              ) : (
+                 <div className="flex items-center justify-center h-full text-muted-foreground">
+                    Not enough data for chart.
+                 </div>
+              )}
             </ResponsiveContainer>
           </ChartContainer>
         </CardContent>
       </Card>
 
-      <div className="w-full grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="w-full grid grid-cols-1 lg:grid-cols-3 gap-6"> {/* Ensure this grid also takes full width */}
         <Card className="lg:col-span-1">
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><BarChart3 className="h-5 w-5 text-primary" /> Market Movers</CardTitle>
@@ -106,7 +135,7 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <Tabs defaultValue="gainers">
-              <TabsList className="flex w-full mb-4">
+              <TabsList className="flex w-full mb-4"> {/* Using flex here for equal distribution */}
                 <TabsTrigger value="gainers" className="flex-1">
                   <TrendingUp className="h-4 w-4 mr-1" />Gainers
                 </TabsTrigger>
@@ -138,33 +167,32 @@ export default function DashboardPage() {
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
               {news.map(article => (
-                <NewsCard 
-                  key={article.id} 
-                  article={article} 
-                  onAnalyzeSentiment={handleAnalyzeSentiment} 
+                <NewsCard
+                  key={article.id}
+                  article={article}
+                  onAnalyzeSentiment={handleAnalyzeSentiment}
                   isAnalyzing={analyzingArticleId === article.id}
                 />
               ))}
             </div>
-             <ChartContainer config={chartConfig} className="h-[200px] w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <RechartsBarChart data={newsSentimentData} layout="vertical" margin={{ right: 20 }}>
-                    <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                    <XAxis type="number" stroke="hsl(var(--muted-foreground))" />
-                    <YAxis dataKey="sentiment" type="category" stroke="hsl(var(--muted-foreground))" width={60} />
-                    <ChartTooltip cursor={{fill: 'hsl(var(--muted))'}} content={<ChartTooltipContent />} />
-                    <Bar dataKey="count" radius={4}>
-                      {newsSentimentData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.fill} />
-                      ))}
-                    </Bar>
-                  </RechartsBarChart>
-                </ResponsiveContainer>
-              </ChartContainer>
+            <ChartContainer config={chartConfig} className="h-[200px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <RechartsBarChart data={newsSentimentData} layout="vertical" margin={{ right: 20 }}>
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                  <XAxis type="number" stroke="hsl(var(--muted-foreground))" />
+                  <YAxis dataKey="sentiment" type="category" stroke="hsl(var(--muted-foreground))" width={60} />
+                  <ChartTooltip cursor={{fill: 'hsl(var(--muted))'}} content={<ChartTooltipContent />} />
+                  <Bar dataKey="count" radius={4}>
+                    {newsSentimentData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.fill} />
+                    ))}
+                  </Bar>
+                </RechartsBarChart>
+              </ResponsiveContainer>
+            </ChartContainer>
           </CardContent>
         </Card>
       </div>
     </div>
   );
 }
-
