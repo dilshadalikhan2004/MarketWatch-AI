@@ -1,5 +1,5 @@
 
-import type { Stock, NewsArticle, MarketMover, SentimentDataPoint } from '@/lib/types';
+import type { Stock, NewsArticle, MarketMover, SentimentDataPoint, PortfolioPosition } from '@/lib/types';
 import { v4 as uuidv4 } from 'uuid';
 
 const generateRandomChartData = (): { month: string; price: number }[] => {
@@ -130,12 +130,23 @@ export const getUpdatedMockStocks = (): Stock[] => {
     const newPrice = stock.price * (1 + changeFactor);
     const newChange = newPrice - stock.price;
     const newChangePercent = newChange / stock.price;
+    
+    // Update chart data to reflect the new price trend, ensuring the last point matches current price
+    const updatedChartData = stock.chartData ? stock.chartData.map((d, index, arr) => {
+      if (index === arr.length - 1) { // Last data point
+        return {...d, price: parseFloat(newPrice.toFixed(2)) };
+      }
+      // For other points, apply a smaller random fluctuation
+      return {...d, price: parseFloat(Math.max(10, d.price * (1 + (Math.random() - 0.5) * 0.02)).toFixed(2))};
+    }) : generateRandomChartData();
+
+
     return {
       ...stock,
       price: parseFloat(newPrice.toFixed(2)),
       change: parseFloat(newChange.toFixed(2)),
       changePercent: parseFloat(newChangePercent.toFixed(4)),
-      chartData: stock.chartData ? stock.chartData.map(d => ({...d, price: d.price * (1 + (Math.random() - 0.5) * 0.01)})) : generateRandomChartData(), // Slightly adjust chart data too
+      chartData: updatedChartData,
     };
   });
 };
@@ -151,6 +162,15 @@ export const mockSentimentData: SentimentDataPoint[] = [
   { name: 'Negative', value: 25, fill: 'hsl(var(--chart-5))' }, // Reddish
   { name: 'Neutral', value: 30, fill: 'hsl(var(--chart-3))' },  // Yellowish/Orange
 ];
+
+// Sample portfolio data
+export const mockPortfolio: Omit<PortfolioPosition, 'currentPrice'>[] = [
+  { symbol: 'AAPL', shares: 10, avgPurchasePrice: 150.00 },
+  { symbol: 'MSFT', shares: 5, avgPurchasePrice: 400.00 },
+  { symbol: 'TSLA', shares: 20, avgPurchasePrice: 160.00 },
+  { symbol: 'GOOGL', shares: 15, avgPurchasePrice: 140.00 },
+];
+
 
 // Helper function from mock-data.ts
 function formatLargeNumber(num: number): string {
