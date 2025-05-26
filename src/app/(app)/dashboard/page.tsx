@@ -100,7 +100,7 @@ export default function DashboardPage() {
     const totalInitialCost = portfolioData.reduce((sum, item) => sum + item.initialCost, 0);
     const totalGainLoss = totalMarketValue - totalInitialCost;
     const totalGainLossPercent = totalInitialCost !== 0 ? (totalGainLoss / totalInitialCost) : 0;
-    return { marketValue: totalMarketValue, initialCost: totalInitialCost, gainLoss: totalGainLoss, gainLossPercent };
+    return { marketValue: totalMarketValue, initialCost: totalInitialCost, gainLoss: totalGainLoss, gainLossPercent: totalGainLossPercent };
   }, [portfolioData]);
   
   const [currentMarketMovers, setCurrentMarketMovers] = useState(initialMarketMovers);
