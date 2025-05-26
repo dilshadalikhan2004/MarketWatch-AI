@@ -1,26 +1,27 @@
 
 'use server';
-// This imports will likely use the minimalized flow definitions
-import { aiInvestmentAssistant, type AiInvestmentAssistantInput, type AiInvestmentAssistantOutput } from '@/ai/flows/ai-investment-assistant';
-import { z } from 'zod';
+import { aiInvestmentAssistant, type AiInvestmentAssistantInput, AiInvestmentAssistantInputSchema, type AiInvestmentAssistantOutput } from '@/ai/flows/ai-investment-assistant';
 
-// Assuming the schema from the cleared flow file exists
-const AiInvestmentAssistantInputSchemaValidation = z.object({
-  query: z.string().min(1, "Query cannot be empty.").optional(), // Adjusted for cleared flow
-});
+export async function getInvestmentAdviceAction(
+  input: AiInvestmentAssistantInput
+): Promise<AiInvestmentAssistantOutput | { error: string }> {
+  
+  const validatedInput = AiInvestmentAssistantInputSchema.safeParse(input);
 
-export async function getInvestmentAdviceAction(input: AiInvestmentAssistantInput): Promise<AiInvestmentAssistantOutput | { error: string }> {
-  const validatedInput = AiInvestmentAssistantInputSchemaValidation.safeParse(input);
   if (!validatedInput.success) {
-    return { error: validatedInput.error.errors.map(e => e.message).join(', ') };
+    // Construct a user-friendly error message from Zod errors
+    const errorMessages = validatedInput.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join('; ');
+    console.error("AI Investment Assistant input validation failed:", errorMessages);
+    return { error: `Invalid input: ${errorMessages}` };
   }
   
-  // Call the cleared/minimal flow
   try {
+    // Call the Genkit flow
     const result = await aiInvestmentAssistant(validatedInput.data);
-    return result; // This will return the placeholder response from the cleared flow
-  } catch (error) {
-    console.error("Error in cleared AI investment assistant action:", error);
-    return { error: "Failed to get investment advice (action cleared)." };
+    return result;
+  } catch (error: any) {
+    console.error("Error in AI investment assistant action:", error);
+    // Provide a generic error message to the client
+    return { error: error.message || "Failed to get investment advice due to an unexpected error." };
   }
 }

@@ -1,26 +1,27 @@
 
 'use server';
-// This imports will likely use the minimalized flow definitions
-import { analyzeSentiment, type AnalyzeSentimentInput, type AnalyzeSentimentOutput } from '@/ai/flows/sentiment-analysis';
-import { z } from 'zod';
+import { analyzeSentiment, type AnalyzeSentimentInput, AnalyzeSentimentInputSchema, type AnalyzeSentimentOutput } from '@/ai/flows/sentiment-analysis';
 
-// Assuming the schema from the cleared flow file exists
-const AnalyzeSentimentInputSchemaValidation = z.object({
-  text: z.string().min(1, "Text cannot be empty.").optional(), // Adjusted for cleared flow
-});
+export async function analyzeNewsSentimentAction(
+  input: AnalyzeSentimentInput
+): Promise<AnalyzeSentimentOutput | { error: string }> {
+  
+  const validatedInput = AnalyzeSentimentInputSchema.safeParse(input);
 
-export async function analyzeNewsSentimentAction(input: AnalyzeSentimentInput): Promise<AnalyzeSentimentOutput | { error: string }> {
-  const validatedInput = AnalyzeSentimentInputSchemaValidation.safeParse(input);
   if (!validatedInput.success) {
-    return { error: validatedInput.error.errors.map(e => e.message).join(', ') };
+    // Construct a user-friendly error message from Zod errors
+    const errorMessages = validatedInput.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join('; ');
+    console.error("Sentiment analysis input validation failed:", errorMessages);
+    return { error: `Invalid input: ${errorMessages}` };
   }
-
-  // Call the cleared/minimal flow
+  
   try {
+    // Call the Genkit flow
     const result = await analyzeSentiment(validatedInput.data);
-    return result; // This will return the placeholder response from the cleared flow
-  } catch (error) {
-    console.error("Error in cleared sentiment analysis action:", error);
-    return { error: "Failed to analyze sentiment (action cleared)." };
+    return result;
+  } catch (error: any) {
+    console.error("Error in sentiment analysis action:", error);
+    // Provide a generic error message to the client
+    return { error: error.message || "Failed to analyze sentiment due to an unexpected error." };
   }
 }

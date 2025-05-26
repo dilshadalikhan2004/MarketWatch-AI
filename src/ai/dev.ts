@@ -2,6 +2,9 @@
 import { config } from 'dotenv';
 config();
 
-// AI Flows have been cleared.
-// If you re-add flows, import them here, e.g.:
-// import '@/ai/flows/your-new-flow.ts';
+// Import your AI flows here
+import '@/ai/flows/ai-investment-assistant';
+import '@/ai/flows/sentiment-analysis';
+
+console.log("Genkit development server started with flows loaded.");
+// You can add more development-specific logic here if needed.
