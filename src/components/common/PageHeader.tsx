@@ -1,6 +1,7 @@
 
 import React from 'react';
 import type { LucideIcon } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 interface PageHeaderProps {
   title: string;
