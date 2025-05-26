@@ -1,5 +1,4 @@
 
-
 export type Stock = {
   symbol: string;
   name: string;
@@ -15,26 +14,23 @@ export type Stock = {
   logoUrl?: string;
   dataAiHint?: string; // For placeholder images
   chartData?: { month: string; price: number }[]; // Historical chart data
-
-  // Fields that might come from a real-time WebSocket stream
-  lastPrice?: number;
-  dailyVolume?: number;
-  timestamp?: number; // Timestamp of the last update
   previousClose?: number;
 };
 
 export type NewsArticle = {
-  id: string;
-  headline: string;
-  source: string;
-  date: string; // ISO string or formatted date string
-  summary: string;
-  url: string;
-  imageUrl?: string;
-  sentiment?: 'positive' | 'negative' | 'neutral';
+  id: string; // Or use source.id + publishedAt if API provides
+  source?: { id?: string | null; name: string };
+  author?: string | null;
+  title: string;
+  description?: string | null;
+  url: string; // URL to the original article
+  urlToImage?: string | null; // URL of an image for the article
+  publishedAt: string; // ISO string
+  content?: string | null; // Full content or snippet
+  sentiment?: 'positive' | 'negative' | 'neutral'; // Optional, if we analyze it
   sentimentScore?: number;
   sentimentReason?: string;
-  dataAiHint?: string; // For placeholder images
+  dataAiHint?: string; // For placeholder images for urlToImage
 };
 
 export type Alert = {
@@ -60,10 +56,15 @@ export interface PortfolioPosition {
   symbol: string;
   shares: number;
   avgPurchasePrice: number;
-  currentPrice?: number; // To be fetched/updated
-  name?: string;
-  logoUrl?: string;
-  dataAiHint?: string;
+  name?: string; // Added from mockStocks or context
+  logoUrl?: string; // Added from mockStocks or context
+  dataAiHint?: string; // Added from mockStocks or context
+  // Calculated fields
+  currentPrice: number;
+  marketValue: number;
+  initialCost: number;
+  gainLoss: number;
+  gainLossPercent: number;
 }
 
 
@@ -87,9 +88,8 @@ export type SentimentDataPoint = {
   fill: string; // color for the chart
 };
 
-// Represents the structure of data you might store per stock from WebSocket
+// Represents the structure of data you might store per stock
 export interface RealtimeStockData extends Partial<Stock> {
-  // Ensure 'price' is the primary field for current price display
-  // Add any other fields you expect from Polygon.io WebSocket streams
-  // e.g., bid, ask, lastTradeTimestamp, etc.
+  dailyVolume?: number;
+  timestamp?: number;
 }

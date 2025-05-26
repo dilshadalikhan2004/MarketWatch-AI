@@ -10,7 +10,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AreaChart, BarChart3, Newspaper, TrendingUp, TrendingDown, Zap, ArrowRight, AlertCircle, Wallet, RefreshCw } from 'lucide-react';
 import { MinimalStockCard } from '@/components/common/StockCard';
 import { NewsCard } from '@/components/common/NewsCard';
-import { generateMockNews, mockMarketMovers as initialMarketMovers, mockSentimentData, mockPortfolio as basePortfolio, mockStocks } from '@/lib/mock-data';
+import { mockMarketMovers as initialMarketMovers, mockSentimentData, mockPortfolio as basePortfolio, mockStocks } from '@/lib/mock-data';
 import type { Stock, NewsArticle, MarketMover, SentimentDataPoint, PortfolioPosition as PortfolioPositionType } from '@/lib/types';
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { Bar, BarChart as RechartsBarChart, CartesianGrid, XAxis, YAxis, Line, LineChart as RechartsLineChart, Cell } from 'recharts';
@@ -18,6 +18,7 @@ import { formatCurrency, formatPercentage } from '@/lib/formatters';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 import { useRealtimeStockData } from '@/contexts/RealtimeStockContext';
+import { getNewsArticlesAction } from '@/lib/actions/news'; // Import the new server action
 
 const chartConfig = {
   price: { label: "Price", color: "hsl(var(--chart-1))" },
@@ -26,23 +27,15 @@ const chartConfig = {
   neutral: { label: "Neutral", color: "hsl(var(--chart-3))" },
 };
 
-interface DisplayPortfolioPosition extends PortfolioPositionType {
-  name?: string;
-  logoUrl?: string;
-  dataAiHint?: string;
-  marketValue: number;
-  initialCost: number;
-  gainLoss: number;
-  gainLossPercent: number;
-  currentPrice: number;
-}
 
 export default function DashboardPage() {
   const { stockData: realtimeStockData, subscribeToSymbol, unsubscribeFromSymbol, refreshStockData, isLoading: isLoadingRealtime, error: dataError } = useRealtimeStockData();
   const [isMounted, setIsMounted] = useState(false);
   const [recentNews, setRecentNews] = useState<NewsArticle[]>([]);
+  const [isLoadingNews, setIsLoadingNews] = useState(true);
+  const [newsError, setNewsError] = useState<string | null>(null);
 
-  const marketOverviewStockSymbol = useMemo(() => mockStocks.length > 0 ? mockStocks[0].symbol : '', []);
+  const marketOverviewStockSymbol = useMemo(() => mockStocks.length > 0 ? mockStocks[0].symbol : 'AAPL', []); // Default to AAPL if mockStocks is empty
   const selectedMarketSymbol = marketOverviewStockSymbol;
 
 
@@ -54,22 +47,35 @@ export default function DashboardPage() {
     ...initialMarketMovers.active.map(m => m.symbol),
   ].filter(Boolean))), [selectedMarketSymbol]);
 
-
   useEffect(() => {
     setIsMounted(true);
-    setRecentNews(generateMockNews(6));
-
     allDashboardSymbolsToRefresh.forEach(subscribeToSymbol);
 
+    const fetchNews = async () => {
+      setIsLoadingNews(true);
+      setNewsError(null);
+      const result = await getNewsArticlesAction('finance market', 3); // Fetch 3 articles related to finance
+      if (result.error) {
+        setNewsError(result.error);
+        console.error("Error fetching news:", result.error);
+      } else if (result.articles) {
+        setRecentNews(result.articles);
+      }
+      setIsLoadingNews(false);
+    };
+    fetchNews();
+    
     if (selectedMarketSymbol) {
         console.log('[DashboardPage] Initial auto-fetch for market overview stock:', selectedMarketSymbol);
-        refreshStockData([selectedMarketSymbol]);
+        refreshStockData([selectedMarketSymbol]); // Fetch only for market overview stock initially
     }
 
     return () => {
       allDashboardSymbolsToRefresh.forEach(unsubscribeFromSymbol);
     };
-  }, [isMounted, selectedMarketSymbol, subscribeToSymbol, unsubscribeFromSymbol, refreshStockData, allDashboardSymbolsToRefresh]);
+  // Removed refreshStockData from dependency array as it's memoized in context with useRefs
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMounted, selectedMarketSymbol, subscribeToSymbol, unsubscribeFromSymbol, allDashboardSymbolsToRefresh]);
 
 
   const marketOverviewStock = useMemo(() => {
@@ -79,11 +85,11 @@ export default function DashboardPage() {
     if (isMounted && rtData && rtData.price !== undefined) {
       return { ...baseStock, ...rtData, name: baseStock?.name || rtData.symbol, logoUrl: baseStock?.logoUrl, dataAiHint: baseStock?.dataAiHint, chartData: rtData.chartData || baseStock?.chartData || [] } as Stock;
     }
-    return baseStock || null;
+    return baseStock || { symbol: selectedMarketSymbol, name: selectedMarketSymbol, price: 0, change:0, changePercent:0, chartData: [] } as Stock; // Provide a fallback structure
   }, [selectedMarketSymbol, realtimeStockData, isMounted]);
   
 
-  const portfolioData: DisplayPortfolioPosition[] = useMemo(() => {
+  const portfolioData: PortfolioPositionType[] = useMemo(() => {
     return basePortfolio.map(pos => {
       const baseStockInfo = mockStocks.find(s => s.symbol === pos.symbol);
       const currentRealtimeData = realtimeStockData[pos.symbol];
@@ -122,11 +128,12 @@ export default function DashboardPage() {
       return list.map(mover => {
         const baseMoverInfo = mockStocks.find(s => s.symbol === mover.symbol);
         const rtData = realtimeStockData[mover.symbol];
+        // If realtime data exists and component is mounted, use it, otherwise fallback to initial mover data or base mock.
         if (isMounted && rtData && rtData.price !== undefined) {
-          return { ...baseMoverInfo, ...rtData, type: mover.type } as MarketMover;
+          return { ...baseMoverInfo, ...rtData, name: baseMoverInfo?.name || rtData.name || mover.symbol, type: mover.type } as MarketMover;
         }
-        return { ...baseMoverInfo, ...mover } as MarketMover; 
-      })
+        return { ...baseMoverInfo, ...mover, name: baseMoverInfo?.name || mover.name || mover.symbol } as MarketMover; 
+      }).filter(mover => mover.symbol && mover.name); // Ensure symbol and name are present
     };
     const gainers = updateMoverList(initialMarketMovers.gainers).sort((a,b) => (b.changePercent || 0) - (a.changePercent || 0));
     const losers = updateMoverList(initialMarketMovers.losers).sort((a,b) => (a.changePercent || 0) - (b.changePercent || 0));
@@ -143,8 +150,8 @@ export default function DashboardPage() {
     const baseStock = mockStocks.find(s => s.symbol === mover.symbol) || mover;
     const rtData = realtimeStockData[mover.symbol];
     const displayData = (isMounted && rtData && rtData.price !== undefined) 
-      ? { ...baseStock, ...rtData, type: mover.type } 
-      : { ...baseStock, type: mover.type };
+      ? { ...baseStock, ...rtData, name: baseStock.name || rtData.name || mover.symbol, type: mover.type } 
+      : { ...baseStock, name: baseStock.name || mover.name || mover.symbol, type: mover.type };
       
     return <MinimalStockCard key={mover.symbol} stock={displayData as Stock} className="w-full" />;
   };
@@ -154,7 +161,8 @@ export default function DashboardPage() {
         console.log('[DashboardPage] Manual refresh triggered for symbols:', allDashboardSymbolsToRefresh);
         refreshStockData(allDashboardSymbolsToRefresh);
     }
-    setRecentNews(generateMockNews(6)); // Also refresh news dates on manual refresh
+    // Optionally refresh news as well, or keep it on its own lifecycle
+    // fetchNews(); 
   };
   
   if (!isMounted && isLoadingRealtime && !marketOverviewStock) {
@@ -175,7 +183,7 @@ export default function DashboardPage() {
     <div className="flex w-full flex-col gap-6">
       <PageHeader
         title="Dashboard Overview"
-        description="Market insights at a glance. Data from Alpha Vantage (API limits apply)."
+        description="Market insights at a glance. Data updates from Alpha Vantage."
         icon={AreaChart}
         actions={
           <Button onClick={handleRefreshAllDashboardData} disabled={isLoadingRealtime} variant="outline">
@@ -188,7 +196,7 @@ export default function DashboardPage() {
       {dataError && isMounted && (
         <Alert variant="destructive" className="max-w-full">
             <AlertCircle className="h-4 w-4" />
-            <AlertTitle>Data Fetching Error</AlertTitle>
+            <AlertTitle>Stock Data Error</AlertTitle>
             <AlertDescription>{dataError}</AlertDescription>
         </Alert>
       )}
@@ -253,7 +261,7 @@ export default function DashboardPage() {
                 <AlertCircle className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                 <AlertTitle className="text-blue-700 dark:text-blue-300 font-semibold">Sample Data & API Limits</AlertTitle>
                 <AlertDescription className="text-blue-600 dark:text-blue-400">
-                  This portfolio uses sample positions. Prices update from Alpha Vantage when "Refresh Data" is clicked, subject to API limits.
+                  This portfolio uses sample positions. Prices update from Alpha Vantage when "Refresh Data" is clicked, subject to API limits. Mock data is used as a fallback.
                 </AlertDescription>
               </Alert>
               {isMounted && portfolioData.length > 0 ? (
@@ -371,7 +379,7 @@ export default function DashboardPage() {
                     </Bar>
                   </RechartsBarChart>
                 </ChartContainer>
-              ) : <p>Loading chart...</p>}
+              ) : <p className="text-muted-foreground text-center py-4">Loading chart...</p>}
             </CardContent>
           </Card>
         </div>
@@ -386,16 +394,17 @@ export default function DashboardPage() {
               <Link href="/sentiment">View All News <ArrowRight className="ml-2 h-4 w-4" /></Link>
             </Button>
           </CardTitle>
-          <CardDescription>Latest headlines impacting the market. Dates refresh daily.</CardDescription>
+          <CardDescription>Latest headlines impacting the market.</CardDescription>
         </CardHeader>
         <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {isMounted && recentNews.length > 0 ? recentNews.slice(0, 3).map(article => (
+          {isLoadingNews && <p className="text-muted-foreground text-center py-4 md:col-span-2 lg:col-span-3">Loading news...</p>}
+          {newsError && <Alert variant="destructive" className="md:col-span-2 lg:col-span-3"><AlertCircle className="h-4 w-4" /><AlertTitle>News Error</AlertTitle><AlertDescription>{newsError}</AlertDescription></Alert>}
+          {!isLoadingNews && !newsError && recentNews.length === 0 && <p className="text-muted-foreground text-center py-4 md:col-span-2 lg:col-span-3">No news articles found.</p>}
+          {!isLoadingNews && !newsError && recentNews.length > 0 && recentNews.map(article => (
             <NewsCard key={article.id} article={article} />
-          )) : <p className="text-muted-foreground text-center py-4">Loading news...</p>}
+          ))}
         </CardContent>
       </Card>
     </div>
   );
 }
-
-    

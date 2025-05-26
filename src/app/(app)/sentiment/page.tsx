@@ -5,43 +5,56 @@ import { PageHeader } from '@/components/common/PageHeader';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Sparkles, Loader2, TrendingUp, TrendingDown, MinusCircle } from 'lucide-react';
+import { Sparkles, Loader2, TrendingUp, TrendingDown, MinusCircle, AlertCircle } from 'lucide-react';
 import { analyzeNewsSentimentAction } from '@/lib/actions/sentiment';
-import type { AnalyzeSentimentOutput } from '@/ai/flows/sentiment-analysis';
-import { generateMockNews } from '@/lib/mock-data';
-import type { NewsArticle } from '@/lib/types';
+import type { AnalyzeSentimentOutput, NewsArticle } from '@/lib/types';
 import { NewsCard } from '@/components/common/NewsCard';
-import { Badge } from '@/components/ui/badge';
 import { Alert as ShadCnAlert, AlertTitle, AlertDescription } from '@/components/ui/alert';
+import { getNewsArticlesAction } from '@/lib/actions/news'; // Import the new server action
 
 
 export default function SentimentPage() {
   const [textToAnalyze, setTextToAnalyze] = useState('');
   const [analysisResult, setAnalysisResult] = useState<AnalyzeSentimentOutput | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [isLoadingAnalysis, setIsLoadingAnalysis] = useState(false);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
+  
   const [recentNewsWithSentiment, setRecentNewsWithSentiment] = useState<NewsArticle[]>([]);
+  const [isLoadingNews, setIsLoadingNews] = useState(true);
+  const [newsError, setNewsError] = useState<string | null>(null);
 
   useEffect(() => {
-    setRecentNewsWithSentiment(generateMockNews(6)); // Generate news on mount
+    const fetchNews = async () => {
+      setIsLoadingNews(true);
+      setNewsError(null);
+      const result = await getNewsArticlesAction('finance market', 6); // Fetch 6 articles
+      if (result.error) {
+        setNewsError(result.error);
+        console.error("Error fetching news for sentiment page:", result.error);
+      } else if (result.articles) {
+        setRecentNewsWithSentiment(result.articles);
+      }
+      setIsLoadingNews(false);
+    };
+    fetchNews();
   }, []);
 
   const handleAnalyze = async () => {
     if (!textToAnalyze.trim()) {
-      setError("Please enter some text to analyze.");
+      setAnalysisError("Please enter some text to analyze.");
       return;
     }
     if (textToAnalyze.length < 10) {
-      setError("Text must be at least 10 characters long for analysis.");
+      setAnalysisError("Text must be at least 10 characters long for analysis.");
       return;
     }
-    setIsLoading(true);
-    setError(null);
+    setIsLoadingAnalysis(true);
+    setAnalysisError(null);
     setAnalysisResult(null);
     const result = await analyzeNewsSentimentAction({ text: textToAnalyze });
-    setIsLoading(false);
+    setIsLoadingAnalysis(false);
     if ('error' in result) {
-      setError(result.error);
+      setAnalysisError(result.error);
     } else {
       setAnalysisResult(result);
     }
@@ -64,7 +77,7 @@ export default function SentimentPage() {
     <div className="w-full">
       <PageHeader
         title="Sentiment Analysis"
-        description="Analyze market sentiment from news articles or custom text. Dates refresh daily."
+        description="Analyze market sentiment from news articles or custom text."
         icon={Sparkles}
       />
 
@@ -82,15 +95,15 @@ export default function SentimentPage() {
                 onChange={(e) => setTextToAnalyze(e.target.value)}
                 rows={6}
               />
-              <Button onClick={handleAnalyze} disabled={isLoading} className="w-full">
-                {isLoading ? (
+              <Button onClick={handleAnalyze} disabled={isLoadingAnalysis} className="w-full">
+                {isLoadingAnalysis ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 ) : (
                   <Sparkles className="mr-2 h-4 w-4" />
                 )}
                 Analyze Sentiment
               </Button>
-              {error && <p className="text-sm text-destructive">{error}</p>}
+              {analysisError && <p className="text-sm text-destructive">{analysisError}</p>}
               {analysisResult && (
                  <Card className={`mt-4 border-2 ${getSentimentColorClass(analysisResult.sentiment)}`}>
                   <CardHeader>
@@ -112,15 +125,13 @@ export default function SentimentPage() {
         <div className="lg:col-span-2">
           <Card className="shadow-lg">
             <CardHeader>
-              <CardTitle>Recent News Sentiment</CardTitle>
-              <CardDescription>Sentiment analysis for recent market news. Dates refresh daily.</CardDescription>
+              <CardTitle>Recent News </CardTitle>
+              <CardDescription>Recent news articles. Sentiment analysis can be performed on any text.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {recentNewsWithSentiment.length > 0 ? (
-                recentNewsWithSentiment.map(article => (
-                  <NewsCard key={article.id} article={article} showSentimentBadge />
-                ))
-              ) : (
+              {isLoadingNews && <p className="text-muted-foreground text-center py-4">Loading news...</p>}
+              {newsError && <ShadCnAlert variant="destructive"><AlertCircle className="h-4 w-4" /><AlertTitle>News Error</AlertTitle><AlertDescription>{newsError}</AlertDescription></ShadCnAlert>}
+              {!isLoadingNews && !newsError && recentNewsWithSentiment.length === 0 && (
                  <ShadCnAlert>
                   <Sparkles className="h-4 w-4" />
                   <AlertTitle>No News Available</AlertTitle>
@@ -128,6 +139,11 @@ export default function SentimentPage() {
                     Could not load recent news articles at this time.
                   </AlertDescription>
                 </ShadCnAlert>
+              )}
+              {!isLoadingNews && !newsError && recentNewsWithSentiment.length > 0 && (
+                recentNewsWithSentiment.map(article => (
+                  <NewsCard key={article.id} article={article} showSentimentBadge={!!article.sentiment} />
+                ))
               )}
             </CardContent>
           </Card>

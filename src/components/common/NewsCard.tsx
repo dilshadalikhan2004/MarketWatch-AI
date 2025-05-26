@@ -18,9 +18,9 @@ interface NewsCardProps {
 export function NewsCard({ article, className, showSentimentBadge = false }: NewsCardProps) {
 
   const getSentimentBadgeVariant = (sentiment?: 'positive' | 'negative' | 'neutral') => {
-    if (sentiment === 'positive') return 'default'; // typically green or blue if themed
-    if (sentiment === 'negative') return 'destructive'; // typically red
-    return 'secondary'; // typically gray
+    if (sentiment === 'positive') return 'default';
+    if (sentiment === 'negative') return 'destructive';
+    return 'secondary';
   };
   
   const getSentimentIcon = (sentiment?: 'positive' | 'negative' | 'neutral') => {
@@ -29,34 +29,41 @@ export function NewsCard({ article, className, showSentimentBadge = false }: New
     return <MinusCircle className="mr-1 h-3 w-3" />;
   };
 
+  const imageSrc = article.urlToImage || `https://placehold.co/600x400.png`;
+  const imageHint = article.urlToImage ? 'article image' : (article.dataAiHint || 'news image');
 
   return (
     <Card className={cn("shadow-md hover:shadow-lg transition-shadow duration-200 flex flex-col", className)}>
-      {article.imageUrl && (
+      {imageSrc && (
         <div className="relative w-full h-40">
           <Image
-            src={article.imageUrl}
-            alt={article.headline}
+            src={imageSrc}
+            alt={article.title}
             layout="fill"
             objectFit="cover"
             className="rounded-t-lg"
-            data-ai-hint={article.dataAiHint || 'news image'}
+            data-ai-hint={imageHint}
+            onError={(e) => {
+              // Fallback if the API image fails to load
+              const target = e.target as HTMLImageElement;
+              target.src = `https://placehold.co/600x400.png`;
+              target.dataset.aiHint = article.dataAiHint || 'news image fallback';
+            }}
           />
         </div>
       )}
       <CardHeader className="pb-2">
-        <CardTitle className="text-md leading-tight h-12 overflow-hidden" title={article.headline}>
-          {/* Using a Link for the title to be clickable */}
+        <CardTitle className="text-md leading-tight h-12 overflow-hidden" title={article.title}>
           <Link href={article.url} target="_blank" rel="noopener noreferrer" className="hover:underline">
-            {article.headline}
+            {article.title || "Untitled Article"}
           </Link>
         </CardTitle>
         <CardDescription className="text-xs">
-          {article.source} - {formatDate(article.date)}
+          {article.source?.name || "Unknown Source"} - {formatDate(article.publishedAt)}
         </CardDescription>
       </CardHeader>
       <CardContent className="text-sm text-muted-foreground flex-grow pt-0">
-        <p className="line-clamp-3">{article.summary}</p>
+        <p className="line-clamp-3">{article.description || "No description available."}</p>
       </CardContent>
       <CardFooter className="pt-2 pb-4 flex justify-between items-center">
         {showSentimentBadge && article.sentiment && (
@@ -71,7 +78,7 @@ export function NewsCard({ article, className, showSentimentBadge = false }: New
           rel="noopener noreferrer" 
           className={cn(
             "text-xs font-medium text-primary hover:underline flex items-center",
-            !showSentimentBadge && "ml-auto" // if no badge, push link to right
+            !(showSentimentBadge && article.sentiment) && "ml-auto" 
           )}
         >
           Read More <ArrowRight className="ml-1 h-3 w-3" />
