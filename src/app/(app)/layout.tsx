@@ -1,17 +1,11 @@
-import { AppSidebar } from "@/components/app-sidebar";
-import { SidebarInset } from "@/components/ui/sidebar";
+
+import React from 'react';
 
 export default function AppLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  return (
-    <div className="flex min-h-screen w-full">
-      <AppSidebar />
-      <SidebarInset className="flex-1 flex flex-col p-4 md:p-6 lg:p-8">
-        {children}
-      </SidebarInset>
-    </div>
-  );
+  // App layout cleared. You might want to re-add sidebar or other common UI elements.
+  return <main className="p-4 md:p-6 lg:p-8">{children}</main>;
 }

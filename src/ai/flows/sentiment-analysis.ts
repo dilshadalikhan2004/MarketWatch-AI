@@ -1,55 +1,51 @@
-// use server'
 
+'use server';
 /**
- * @fileOverview Analyzes news headlines and articles for sentiment (positive, negative, neutral).
- *
- * - analyzeSentiment - A function that handles the sentiment analysis process.
- * - AnalyzeSentimentInput - The input type for the analyzeSentiment function.
- * - AnalyzeSentimentOutput - The return type for the analyzeSentiment function.
+ * @fileOverview Content cleared. This Sentiment Analysis flow has been reset.
+ * You can redefine the input, output, and logic for this flow.
  */
+import { ai } from '@/ai/genkit';
+import { z } from 'genkit';
 
-import {ai} from '@/ai/genkit';
-import {z} from 'genkit';
-
-const AnalyzeSentimentInputSchema = z.object({
-  text: z.string().describe('The news headline or article text to analyze.'),
+export const AnalyzeSentimentInputSchema = z.object({
+  text: z.string().optional().describe('The news headline or article text to analyze.'),
 });
 export type AnalyzeSentimentInput = z.infer<typeof AnalyzeSentimentInputSchema>;
 
-const AnalyzeSentimentOutputSchema = z.object({
+export const AnalyzeSentimentOutputSchema = z.object({
   sentiment: z
     .enum(['positive', 'negative', 'neutral'])
+    .optional()
     .describe('The sentiment of the text.'),
-  score: z.number().describe('A numerical score representing the sentiment.'),
+  score: z.number().optional().describe('A numerical score representing the sentiment.'),
   reason: z.string().optional().describe('Reasoning behind the sentiment analysis.'),
 });
-
 export type AnalyzeSentimentOutput = z.infer<typeof AnalyzeSentimentOutputSchema>;
 
 export async function analyzeSentiment(input: AnalyzeSentimentInput): Promise<AnalyzeSentimentOutput> {
-  return analyzeSentimentFlow(input);
+  // Placeholder implementation
+  return { sentiment: 'neutral', score: 0, reason: "Sentiment Analysis flow has been cleared and needs to be re-implemented." };
 }
 
+// Example of redefining a flow (currently commented out):
+/*
 const prompt = ai.definePrompt({
-  name: 'analyzeSentimentPrompt',
+  name: 'analyzeSentimentPrompt_cleared',
   input: {schema: AnalyzeSentimentInputSchema},
   output: {schema: AnalyzeSentimentOutputSchema},
-  prompt: `You are a sentiment analysis expert. Analyze the following text and determine its sentiment.
-
-Text: {{{text}}}
-
-Respond in a JSON format with sentiment, score and reason. Sentiment should be positive, negative, or neutral. Score should be from -1 to 1. Add a short reason for the sentiment.
-`,
+  prompt: `This is a cleared prompt. Original text: {{{text}}}`,
 });
 
 const analyzeSentimentFlow = ai.defineFlow(
   {
-    name: 'analyzeSentimentFlow',
+    name: 'analyzeSentimentFlow_cleared',
     inputSchema: AnalyzeSentimentInputSchema,
     outputSchema: AnalyzeSentimentOutputSchema,
   },
   async input => {
-    const {output} = await prompt(input);
-    return output!;
+    // const {output} = await prompt(input);
+    // return output!;
+    return { sentiment: 'neutral', score: 0, reason: "Flow logic needs to be re-implemented." };
   }
 );
+*/

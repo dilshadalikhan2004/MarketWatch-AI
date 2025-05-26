@@ -1,19 +1,20 @@
-"use client"; // Required for useRouter
 
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { Loader2 } from 'lucide-react';
+"use client";
+import React from 'react';
 
 export default function HomePage() {
-  const router = useRouter();
-
-  useEffect(() => {
-    router.replace('/dashboard');
-  }, [router]);
+  // Redirect to a default page or show a welcome message.
+  // If you had a router.replace('/dashboard'), you might want to remove or change it.
+  // For now, just a simple welcome.
+  React.useEffect(() => {
+    if (typeof window !== "undefined") {
+      // window.location.href = '/dashboard'; // Or your preferred starting page
+    }
+  }, []);
 
   return (
     <div className="flex h-screen w-screen items-center justify-center bg-background">
-      <Loader2 className="h-12 w-12 animate-spin text-primary" />
+      <h1 className="text-2xl">Welcome to MarketWatch AI (Project Reset)</h1>
     </div>
   );
 }

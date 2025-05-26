@@ -1,5 +1,7 @@
+
 import { config } from 'dotenv';
 config();
 
-import '@/ai/flows/sentiment-analysis.ts';
-import '@/ai/flows/ai-investment-assistant.ts';
+// AI Flows have been cleared.
+// If you re-add flows, import them here, e.g.:
+// import '@/ai/flows/your-new-flow.ts';

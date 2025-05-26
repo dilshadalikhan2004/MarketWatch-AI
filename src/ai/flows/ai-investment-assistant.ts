@@ -1,47 +1,47 @@
-// use server'
 
+'use server';
 /**
- * @fileOverview An AI investment assistant that answers questions about the market and stocks.
- *
- * - aiInvestmentAssistant - A function that handles the investment question process.
- * - AiInvestmentAssistantInput - The input type for the aiInvestmentAssistant function.
- * - AiInvestmentAssistantOutput - The return type for the aiInvestmentAssistant function.
+ * @fileOverview Content cleared. This AI Investment Assistant flow has been reset.
+ * You can redefine the input, output, and logic for this flow.
  */
+import { ai } from '@/ai/genkit';
+import { z } from 'genkit';
 
-import {ai} from '@/ai/genkit';
-import {z} from 'genkit';
-
-const AiInvestmentAssistantInputSchema = z.object({
-  query: z.string().describe('The user question about the market or a particular stock.'),
+// Example minimal Zod schemas if needed for other parts of the system temporarily
+export const AiInvestmentAssistantInputSchema = z.object({
+  query: z.string().optional().describe('The user question about the market or a particular stock.'),
 });
 export type AiInvestmentAssistantInput = z.infer<typeof AiInvestmentAssistantInputSchema>;
 
-const AiInvestmentAssistantOutputSchema = z.object({
-  answer: z.string().describe('The summarized insights to help the user make informed decisions.'),
+export const AiInvestmentAssistantOutputSchema = z.object({
+  answer: z.string().optional().describe('The summarized insights to help the user make informed decisions.'),
 });
 export type AiInvestmentAssistantOutput = z.infer<typeof AiInvestmentAssistantOutputSchema>;
 
 export async function aiInvestmentAssistant(input: AiInvestmentAssistantInput): Promise<AiInvestmentAssistantOutput> {
-  return aiInvestmentAssistantFlow(input);
+  // Placeholder implementation
+  return { answer: "AI Investment Assistant flow has been cleared and needs to be re-implemented." };
 }
 
+// Example of redefining a flow (currently commented out):
+/*
 const aiInvestmentAssistantPrompt = ai.definePrompt({
-  name: 'aiInvestmentAssistantPrompt',
+  name: 'aiInvestmentAssistantPrompt_cleared',
   input: {schema: AiInvestmentAssistantInputSchema},
   output: {schema: AiInvestmentAssistantOutputSchema},
-  prompt: `You are an AI investment assistant. Answer the following question about the market or a particular stock, providing summarized insights to help the user make informed decisions. 
-
-Question: {{{query}}}`,
+  prompt: `This is a cleared prompt. Original query: {{{query}}}`,
 });
 
 const aiInvestmentAssistantFlow = ai.defineFlow(
   {
-    name: 'aiInvestmentAssistantFlow',
+    name: 'aiInvestmentAssistantFlow_cleared',
     inputSchema: AiInvestmentAssistantInputSchema,
     outputSchema: AiInvestmentAssistantOutputSchema,
   },
   async input => {
-    const {output} = await aiInvestmentAssistantPrompt(input);
-    return output!;
+    // const {output} = await aiInvestmentAssistantPrompt(input);
+    // return output!;
+    return { answer: "Flow logic needs to be re-implemented." };
   }
 );
+*/
