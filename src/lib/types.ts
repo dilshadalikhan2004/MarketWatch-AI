@@ -1,19 +1,26 @@
 
+
 export type Stock = {
   symbol: string;
   name: string;
-  price: number;
-  change: number;
-  changePercent: number;
+  price: number; // Last known price
+  change: number; // Change from previous close or open
+  changePercent: number; // Percentage change
   marketCap?: string;
-  volume?: string;
+  volume?: string; // Current day's volume
   avgVolume?: string;
   peRatio?: number | string;
   high52Week?: number;
   low52Week?: number;
   logoUrl?: string;
   dataAiHint?: string; // For placeholder images
-  chartData?: { month: string; price: number }[];
+  chartData?: { month: string; price: number }[]; // Historical chart data
+
+  // Fields that might come from a real-time WebSocket stream
+  lastPrice?: number;
+  dailyVolume?: number;
+  timestamp?: number; // Timestamp of the last update
+  previousClose?: number;
 };
 
 export type NewsArticle = {
@@ -49,12 +56,16 @@ export type WatchlistItem = {
 };
 
 // For the sample portfolio snapshot on the dashboard
-export type PortfolioPosition = {
+export interface PortfolioPosition {
   symbol: string;
   shares: number;
   avgPurchasePrice: number;
-  currentPrice?: number; // To be fetched
-};
+  currentPrice?: number; // To be fetched/updated
+  name?: string;
+  logoUrl?: string;
+  dataAiHint?: string;
+}
+
 
 // For the user-configurable simulated portfolio
 export type UserPortfolioPosition = {
@@ -75,3 +86,10 @@ export type SentimentDataPoint = {
   value: number; // e.g., count or percentage
   fill: string; // color for the chart
 };
+
+// Represents the structure of data you might store per stock from WebSocket
+export interface RealtimeStockData extends Partial<Stock> {
+  // Ensure 'price' is the primary field for current price display
+  // Add any other fields you expect from Polygon.io WebSocket streams
+  // e.g., bid, ask, lastTradeTimestamp, etc.
+}

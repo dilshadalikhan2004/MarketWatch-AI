@@ -1,6 +1,6 @@
 
 "use client";
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { PageHeader } from '@/components/common/PageHeader';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -8,15 +8,16 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AreaChart, BarChart3, Newspaper, TrendingUp, TrendingDown, Zap, ArrowRight, AlertCircle, Wallet } from 'lucide-react';
-import { StockCard, MinimalStockCard } from '@/components/common/StockCard';
+import { MinimalStockCard } from '@/components/common/StockCard';
 import { NewsCard } from '@/components/common/NewsCard';
-import { mockStocks as initialMockStocks, mockNews, mockMarketMovers, mockSentimentData, getUpdatedMockStocks, mockPortfolio } from '@/lib/mock-data';
-import type { Stock, NewsArticle, MarketMover, SentimentDataPoint, PortfolioPosition as PortfolioPositionType } from '@/lib/types';
+import { mockNews, mockMarketMovers as initialMarketMovers, mockSentimentData, mockPortfolio as basePortfolio, mockStocks } from '@/lib/mock-data';
+import type { Stock, NewsArticle, MarketMover, SentimentDataPoint, PortfolioPosition as PortfolioPositionType, RealtimeStockData } from '@/lib/types';
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { Bar, BarChart as RechartsBarChart, CartesianGrid, XAxis, YAxis, Line, LineChart as RechartsLineChart, ResponsiveContainer, Cell } from 'recharts';
 import { formatCurrency, formatPercentage, formatDate } from '@/lib/formatters';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
+import { useRealtimeStockData } from '@/contexts/RealtimeStockContext';
 
 const chartConfig = {
   price: { label: "Price", color: "hsl(var(--chart-1))" },
@@ -33,62 +34,58 @@ interface DisplayPortfolioPosition extends PortfolioPositionType {
   initialCost: number;
   gainLoss: number;
   gainLossPercent: number;
+  currentPrice: number;
 }
 
 export default function DashboardPage() {
-  const [currentStocks, setCurrentStocks] = useState<Stock[]>(initialMockStocks);
-  const [marketOverviewStock, setMarketOverviewStock] = useState<Stock>(initialMockStocks[0]);
-  const [portfolioData, setPortfolioData] = useState<DisplayPortfolioPosition[]>([]);
-  const [portfolioTotals, setPortfolioTotals] = useState({
-    marketValue: 0,
-    gainLoss: 0,
-    gainLossPercent: 0,
-    initialCost: 0,
-  });
-  const [isLoading, setIsLoading] = useState(true);
+  const { stockData: realtimeStockData, subscribeToSymbol, unsubscribeFromSymbol, isLoading: isLoadingRealtime, error: realtimeError } = useRealtimeStockData();
+  
+  // Use the first mock stock as the default for market overview, or null if mockStocks is empty
+  const [selectedMarketSymbol, setSelectedMarketSymbol] = useState<string>(mockStocks.length > 0 ? mockStocks[0].symbol : '');
 
-
+  // Subscribe to the selected market symbol for real-time updates
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const updatedSystemStocks = await getUpdatedMockStocks();
-        setCurrentStocks(updatedSystemStocks);
-      } catch (error) {
-        console.error("Failed to fetch updated stock data:", error);
-        // Potentially set an error state to display to the user
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    
-    fetchData(); // Initial fetch
-
-    const interval = setInterval(fetchData, 5000); // Update every 5 seconds
-    return () => clearInterval(interval);
-  }, []);
-
-  useEffect(() => {
-    if (isLoading) return; // Don't update dependent states until initial data is loaded
-
-    const updatedOverviewStock = currentStocks.find(s => s.symbol === marketOverviewStock.symbol);
-    if (updatedOverviewStock) {
-      setMarketOverviewStock(updatedOverviewStock);
+    if (selectedMarketSymbol) {
+      subscribeToSymbol(selectedMarketSymbol);
+      return () => unsubscribeFromSymbol(selectedMarketSymbol);
     }
+  }, [selectedMarketSymbol, subscribeToSymbol, unsubscribeFromSymbol]);
 
-    // Calculate portfolio values
-    const enrichedPortfolio = mockPortfolio.map(pos => {
-      const currentStockInfo = currentStocks.find(s => s.symbol === pos.symbol);
-      const currentPrice = currentStockInfo?.price || pos.avgPurchasePrice; 
-      const marketValue = pos.shares * currentPrice;
+  const marketOverviewStock = useMemo(() => {
+    const baseStock = mockStocks.find(s => s.symbol === selectedMarketSymbol);
+    const rtData = realtimeStockData[selectedMarketSymbol];
+    if (rtData) {
+      return { ...baseStock, ...rtData, name: baseStock?.name || rtData.symbol, logoUrl: baseStock?.logoUrl, dataAiHint: baseStock?.dataAiHint, chartData: baseStock?.chartData || [] } as Stock;
+    }
+    return baseStock || null;
+  }, [selectedMarketSymbol, realtimeStockData]);
+  
+  // Subscribe to all symbols in the basePortfolio for real-time updates
+  useEffect(() => {
+    const portfolioSymbols = new Set(basePortfolio.map(p => p.symbol));
+    portfolioSymbols.forEach(symbol => subscribeToSymbol(symbol));
+    return () => {
+      portfolioSymbols.forEach(symbol => unsubscribeFromSymbol(symbol));
+    };
+  }, [subscribeToSymbol, unsubscribeFromSymbol]);
+
+
+  const portfolioData: DisplayPortfolioPosition[] = useMemo(() => {
+    return basePortfolio.map(pos => {
+      const baseStockInfo = mockStocks.find(s => s.symbol === pos.symbol);
+      const currentRealtimeData = realtimeStockData[pos.symbol];
+      const currentPrice = currentRealtimeData?.price || baseStockInfo?.price || pos.avgPurchasePrice;
+      
       const initialCost = pos.shares * pos.avgPurchasePrice;
+      const marketValue = pos.shares * currentPrice;
       const gainLoss = marketValue - initialCost;
       const gainLossPercent = initialCost !== 0 ? (gainLoss / initialCost) : 0;
 
       return {
         ...pos,
-        name: currentStockInfo?.name,
-        logoUrl: currentStockInfo?.logoUrl,
-        dataAiHint: currentStockInfo?.dataAiHint,
+        name: baseStockInfo?.name || pos.symbol,
+        logoUrl: baseStockInfo?.logoUrl,
+        dataAiHint: baseStockInfo?.dataAiHint,
         currentPrice: currentPrice,
         marketValue,
         initialCost,
@@ -96,29 +93,71 @@ export default function DashboardPage() {
         gainLossPercent,
       };
     });
+  }, [realtimeStockData]);
 
-    setPortfolioData(enrichedPortfolio);
-
-    const totalMarketValue = enrichedPortfolio.reduce((sum, item) => sum + item.marketValue, 0);
-    const totalInitialCost = enrichedPortfolio.reduce((sum, item) => sum + item.initialCost, 0);
+  const portfolioTotals = useMemo(() => {
+    const totalMarketValue = portfolioData.reduce((sum, item) => sum + item.marketValue, 0);
+    const totalInitialCost = portfolioData.reduce((sum, item) => sum + item.initialCost, 0);
     const totalGainLoss = totalMarketValue - totalInitialCost;
     const totalGainLossPercent = totalInitialCost !== 0 ? (totalGainLoss / totalInitialCost) : 0;
+    return { marketValue: totalMarketValue, initialCost: totalInitialCost, gainLoss: totalGainLoss, gainLossPercent };
+  }, [portfolioData]);
+  
+  const [currentMarketMovers, setCurrentMarketMovers] = useState(initialMarketMovers);
 
-    setPortfolioTotals({
-      marketValue: totalMarketValue,
-      gainLoss: totalGainLoss,
-      gainLossPercent: totalGainLossPercent,
-      initialCost: totalInitialCost,
-    });
+  // Update market movers based on real-time data
+  useEffect(() => {
+    const updatedMovers = {
+      gainers: [...initialMarketMovers.gainers], // Start with a copy
+      losers: [...initialMarketMovers.losers],
+      active: [...initialMarketMovers.active],
+    };
 
-  }, [currentStocks, marketOverviewStock.symbol, isLoading]);
+    // Function to update a list of movers
+    const updateMoverList = (list: MarketMover[]) => {
+      return list.map(mover => {
+        const rtData = realtimeStockData[mover.symbol];
+        if (rtData) {
+          return { ...mover, ...rtData };
+        }
+        return mover;
+      })
+      // Re-sort based on updated data if necessary (example for gainers)
+      .sort((a,b) => (b.changePercent || 0) - (a.changePercent || 0));
+    };
+    
+    updatedMovers.gainers = updateMoverList(updatedMovers.gainers).sort((a,b) => (b.changePercent || 0) - (a.changePercent || 0));
+    updatedMovers.losers = updateMoverList(updatedMovers.losers).sort((a,b) => (a.changePercent || 0) - (b.changePercent || 0));
+    // Active sort might be by volume, which also needs real-time update if available
+    updatedMovers.active = updateMoverList(updatedMovers.active).sort((a,b) => 
+        (realtimeStockData[b.symbol]?.dailyVolume || parseFloat(b.volume?.replace(/[^0-9.]/g, '') || '0')) - 
+        (realtimeStockData[a.symbol]?.dailyVolume || parseFloat(a.volume?.replace(/[^0-9.]/g, '') || '0'))
+    );
 
 
-  const renderMarketMoverCard = (mover: MarketMover) => (
-    <MinimalStockCard key={mover.symbol} stock={mover} className="w-full" />
-  );
+    setCurrentMarketMovers(updatedMovers);
+    
+    // Subscribe to symbols in market movers lists
+    const moverSymbols = new Set([
+        ...updatedMovers.gainers.map(s => s.symbol),
+        ...updatedMovers.losers.map(s => s.symbol),
+        ...updatedMovers.active.map(s => s.symbol)
+    ]);
+    moverSymbols.forEach(subscribeToSymbol);
+    return () => {
+        moverSymbols.forEach(unsubscribeFromSymbol);
+    }
 
-  if (isLoading && currentStocks.length === 0) {
+  }, [realtimeStockData, subscribeToSymbol, unsubscribeFromSymbol]);
+
+
+  const renderMarketMoverCard = (mover: MarketMover) => {
+    const rtData = realtimeStockData[mover.symbol];
+    const displayData = rtData ? { ...mover, ...rtData } : mover;
+    return <MinimalStockCard key={mover.symbol} stock={displayData} className="w-full" />;
+  };
+  
+  if (isLoadingRealtime && !marketOverviewStock) {
     return (
         <div className="flex h-screen w-full items-center justify-center">
             <div className="text-center">
@@ -131,12 +170,25 @@ export default function DashboardPage() {
         </div>
     );
   }
+  
+  if (realtimeError) {
+     return (
+        <div className="flex h-screen w-full items-center justify-center">
+            <Alert variant="destructive" className="max-w-md">
+                <AlertCircle className="h-4 w-4" />
+                <AlertTitle>Real-time Data Error</AlertTitle>
+                <AlertDescription>{realtimeError} Please check your API key or network connection.</AlertDescription>
+            </Alert>
+        </div>
+     )
+  }
+
 
   return (
     <div className="flex w-full flex-col gap-6">
       <PageHeader
         title="Dashboard Overview"
-        description="Welcome back! Here's a snapshot of the current market."
+        description="Welcome back! Here's a snapshot of the current market. Real-time data updates via WebSocket."
         icon={AreaChart}
         actions={
           <Button asChild variant="outline">
@@ -147,6 +199,8 @@ export default function DashboardPage() {
           </Button>
         }
       />
+      {isLoadingRealtime && <p className="text-sm text-muted-foreground">Connecting to real-time updates...</p>}
+
 
       {/* Main Grid */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -155,18 +209,21 @@ export default function DashboardPage() {
           <Card className="shadow-lg">
             <CardHeader>
               <CardTitle className="flex items-center justify-between">
-                <span>Market Overview: {marketOverviewStock.name} ({marketOverviewStock.symbol})</span>
-                {marketOverviewStock.logoUrl && <img src={marketOverviewStock.logoUrl} alt={`${marketOverviewStock.name} logo`} data-ai-hint={marketOverviewStock.dataAiHint || 'company logo'} className="h-8 w-8 rounded-full" />}
+                <span>Market Overview: {marketOverviewStock?.name || selectedMarketSymbol} ({selectedMarketSymbol})</span>
+                {marketOverviewStock?.logoUrl && <img src={marketOverviewStock.logoUrl} alt={`${marketOverviewStock.name} logo`} data-ai-hint={marketOverviewStock.dataAiHint || 'company logo'} className="h-8 w-8 rounded-full" />}
               </CardTitle>
-              <CardDescription>
-                Price: {formatCurrency(marketOverviewStock.price)}
-                <span className={marketOverviewStock.change >= 0 ? 'text-green-500' : 'text-red-500'}>
-                  {' '} ({marketOverviewStock.change >= 0 ? '+' : ''}{formatCurrency(marketOverviewStock.change)} / {formatPercentage(marketOverviewStock.changePercent, 2)})
-                </span>
-              </CardDescription>
+              {marketOverviewStock && (
+                <CardDescription>
+                  Price: {formatCurrency(marketOverviewStock.price)}
+                  <span className={cn(marketOverviewStock.change >= 0 ? 'text-green-500' : 'text-red-500', "ml-1")}>
+                    {' '} ({marketOverviewStock.change >= 0 ? '+' : ''}{formatCurrency(marketOverviewStock.change)} / {formatPercentage(marketOverviewStock.changePercent, 2)})
+                  </span>
+                   {isLoadingRealtime && marketOverviewStock.symbol === selectedMarketSymbol && <span className="ml-2 text-xs">(Updating...)</span>}
+                </CardDescription>
+              )}
             </CardHeader>
             <CardContent>
-              {marketOverviewStock.chartData && marketOverviewStock.chartData.length > 1 ? (
+              {marketOverviewStock && marketOverviewStock.chartData && marketOverviewStock.chartData.length > 1 ? (
                 <ChartContainer config={chartConfig} className="h-[250px] w-full">
                   <RechartsLineChart data={marketOverviewStock.chartData} margin={{ top: 5, right: 20, left: -20, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} />
@@ -184,7 +241,7 @@ export default function DashboardPage() {
                 </ChartContainer>
               ) : (
                 <div className="h-[250px] flex items-center justify-center text-muted-foreground">
-                  Not enough data for chart.
+                  {marketOverviewStock ? "Not enough historical data for chart." : "Select a stock or loading data..."}
                 </div>
               )}
             </CardContent>
@@ -193,14 +250,14 @@ export default function DashboardPage() {
           <Card className="shadow-lg">
             <CardHeader>
               <CardTitle className="flex items-center gap-2"><Wallet className="h-5 w-5 text-primary" />Portfolio Snapshot</CardTitle>
-              <CardDescription>A sample overview of your investment performance.</CardDescription>
+              <CardDescription>A sample overview of your investment performance. Prices update in real-time.</CardDescription>
             </CardHeader>
             <CardContent>
               <Alert variant="default" className="mb-4 bg-blue-50 border-blue-200 dark:bg-blue-900/30 dark:border-blue-700">
                 <AlertCircle className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                 <AlertTitle className="text-blue-700 dark:text-blue-300 font-semibold">Sample Data</AlertTitle>
                 <AlertDescription className="text-blue-600 dark:text-blue-400">
-                  The portfolio data displayed below is for demonstration purposes only, using dynamically updating mock prices.
+                  The portfolio data displayed below is for demonstration purposes only, using dynamic mock prices.
                 </AlertDescription>
               </Alert>
               {portfolioData.length > 0 ? (
@@ -284,13 +341,13 @@ export default function DashboardPage() {
                   <TabsTrigger value="active" className="flex-1 w-full"><Zap className="mr-1 h-4 w-4" />Active</TabsTrigger>
                 </TabsList>
                 <TabsContent value="gainers" className="mt-4 space-y-3">
-                  {mockMarketMovers.gainers.map(renderMarketMoverCard)}
+                  {currentMarketMovers.gainers.map(renderMarketMoverCard)}
                 </TabsContent>
                 <TabsContent value="losers" className="mt-4 space-y-3">
-                  {mockMarketMovers.losers.map(renderMarketMoverCard)}
+                  {currentMarketMovers.losers.map(renderMarketMoverCard)}
                 </TabsContent>
                 <TabsContent value="active" className="mt-4 space-y-3">
-                  {mockMarketMovers.active.map(renderMarketMoverCard)}
+                  {currentMarketMovers.active.map(renderMarketMoverCard)}
                 </TabsContent>
               </Tabs>
             </CardContent>

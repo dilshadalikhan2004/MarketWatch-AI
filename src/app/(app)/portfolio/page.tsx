@@ -8,15 +8,15 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Briefcase, PlusCircle, Trash2, TrendingUp, TrendingDown, Info } from 'lucide-react';
+import { Briefcase, PlusCircle, Trash2, TrendingUp, TrendingDown, Info, AlertCircle as AlertCircleIcon } from 'lucide-react';
 import { useUserPortfolio } from '@/hooks/use-user-portfolio';
-import { mockStocks as initialMockStocks, getUpdatedMockStocks, getStockBySymbol as getBaseStockBySymbol } from '@/lib/mock-data';
-import type { UserPortfolioPosition, Stock } from '@/lib/types';
+import { mockStocks as initialMockStocksBase } from '@/lib/mock-data';
+import type { UserPortfolioPosition, Stock, RealtimeStockData } from '@/lib/types';
 import { formatCurrency, formatPercentage } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
 import Image from 'next/image';
 import { useToast } from "@/hooks/use-toast";
-
+import { useRealtimeStockData } from '@/contexts/RealtimeStockContext';
 
 interface DisplayUserPortfolioPosition extends UserPortfolioPosition {
   name?: string;
@@ -31,34 +31,24 @@ interface DisplayUserPortfolioPosition extends UserPortfolioPosition {
 
 export default function PortfolioPage() {
   const { positions, addPosition, removePosition, isLoaded: isPortfolioLoaded } = useUserPortfolio();
+  const { stockData: realtimeStockData, subscribeToSymbol, unsubscribeFromSymbol, isLoading: isLoadingRealtime, error: realtimeError } = useRealtimeStockData();
   const { toast } = useToast();
-
-  const [currentStockData, setCurrentStockData] = useState<Stock[]>(initialMockStocks);
-  const [isLoadingPrices, setIsLoadingPrices] = useState(true);
 
   const [newSymbol, setNewSymbol] = useState('');
   const [newShares, setNewShares] = useState('');
   const [newAvgPrice, setNewAvgPrice] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
 
+  // Subscribe to symbols in the user's portfolio
   useEffect(() => {
-    const fetchAndUpdatePrices = async () => {
-      setIsLoadingPrices(true);
-      try {
-        const updatedStocks = await getUpdatedMockStocks();
-        setCurrentStockData(updatedStocks);
-      } catch (error) {
-        console.error("Failed to update stock prices for portfolio:", error);
-        // Keep existing currentStockData or handle error appropriately
-      } finally {
-        setIsLoadingPrices(false);
-      }
-    };
-
-    fetchAndUpdatePrices(); // Initial fetch
-    const interval = setInterval(fetchAndUpdatePrices, 5000); // Update stock prices every 5 seconds
-    return () => clearInterval(interval);
-  }, []);
+    if (isPortfolioLoaded && positions.length > 0) {
+      const portfolioSymbols = new Set(positions.map(p => p.symbol));
+      portfolioSymbols.forEach(symbol => subscribeToSymbol(symbol));
+      return () => {
+        portfolioSymbols.forEach(symbol => unsubscribeFromSymbol(symbol));
+      };
+    }
+  }, [positions, isPortfolioLoaded, subscribeToSymbol, unsubscribeFromSymbol]);
 
   const resetForm = () => {
     setNewSymbol('');
@@ -85,8 +75,7 @@ export default function PortfolioPage() {
       setFormError("Average purchase price must be a positive number.");
       return;
     }
-    // Check against the base mock stocks list for existence of the symbol
-    const stockExists = initialMockStocks.some(s => s.symbol.toUpperCase() === symbol);
+    const stockExists = initialMockStocksBase.some(s => s.symbol.toUpperCase() === symbol);
     if (!stockExists) {
       setFormError(`Stock symbol "${symbol}" not found in available mock data.`);
       return;
@@ -100,10 +89,10 @@ export default function PortfolioPage() {
   const enrichedPositions: DisplayUserPortfolioPosition[] = useMemo(() => {
     if (!isPortfolioLoaded) return [];
     return positions.map(pos => {
-      const baseStockInfo = getBaseStockBySymbol(pos.symbol); // Get static info like name, logo
-      const liveStockInfo = currentStockData.find(s => s.symbol === pos.symbol);
+      const baseStockInfo = initialMockStocksBase.find(s => s.symbol === pos.symbol);
+      const currentRealtimeData = realtimeStockData[pos.symbol];
       
-      const currentPrice = liveStockInfo?.price || pos.avgPurchasePrice; // Fallback to purchase price if live not found
+      const currentPrice = currentRealtimeData?.price || baseStockInfo?.price || pos.avgPurchasePrice;
       
       const initialCost = pos.shares * pos.avgPurchasePrice;
       const marketValue = pos.shares * currentPrice;
@@ -112,7 +101,7 @@ export default function PortfolioPage() {
 
       return {
         ...pos,
-        name: baseStockInfo?.name,
+        name: baseStockInfo?.name || pos.symbol,
         logoUrl: baseStockInfo?.logoUrl,
         dataAiHint: baseStockInfo?.dataAiHint,
         currentPrice,
@@ -122,7 +111,7 @@ export default function PortfolioPage() {
         gainLossPercent,
       };
     });
-  }, [positions, currentStockData, isPortfolioLoaded]);
+  }, [positions, realtimeStockData, isPortfolioLoaded]);
 
   const portfolioTotals = useMemo(() => {
     const initialCost = enrichedPositions.reduce((sum, p) => sum + p.initialCost, 0);
@@ -132,20 +121,33 @@ export default function PortfolioPage() {
     return { initialCost, marketValue, gainLoss, gainLossPercent };
   }, [enrichedPositions]);
 
+  if (realtimeError) {
+    return (
+      <div className="w-full flex items-center justify-center py-10">
+        <Alert variant="destructive" className="max-w-lg">
+          <AlertCircleIcon className="h-4 w-4" />
+          <AlertTitle>Real-time Data Error</AlertTitle>
+          <AlertDescription>{realtimeError} Portfolio performance cannot be updated. Please check API key or network.</AlertDescription>
+        </Alert>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full">
       <PageHeader
         title="My Simulated Portfolio"
-        description="Manage your hypothetical stock positions and track their simulated performance using dynamically updating (mock) market data."
+        description="Manage your hypothetical stock positions. Performance updates based on real-time (simulated or Polygon.io) data."
         icon={Briefcase}
       />
+       {isLoadingRealtime && <p className="text-sm text-muted-foreground mb-4">Connecting to real-time updates...</p>}
+
 
       <Alert variant="default" className="mb-6 bg-blue-50 border-blue-200 dark:bg-blue-900/30 dark:border-blue-700">
         <Info className="h-5 w-5 text-blue-600 dark:text-blue-400" />
         <AlertTitle className="font-semibold text-blue-700 dark:text-blue-300">Simulation Environment</AlertTitle>
         <AlertDescription className="text-blue-600 dark:text-blue-400">
-          This portfolio is for simulation and educational purposes only. It uses mock market data that updates periodically to simulate real market changes.
+          This portfolio is for simulation and educational purposes. It uses dynamic data (mock or from Polygon.io if configured) to simulate market changes.
           It does not represent real investments or provide financial advice.
         </AlertDescription>
       </Alert>
@@ -183,7 +185,7 @@ export default function PortfolioPage() {
             {isPortfolioLoaded && enrichedPositions.length > 0 
               ? `You have ${enrichedPositions.length} position(s) in your simulated portfolio.`
               : "Your simulated portfolio is empty."}
-            {isLoadingPrices && isPortfolioLoaded && enrichedPositions.length > 0 && " (Updating prices...)"}
+            {isLoadingRealtime && isPortfolioLoaded && enrichedPositions.length > 0 && " (Updating prices...)"}
           </CardDescription>
         </CardHeader>
         <CardContent>

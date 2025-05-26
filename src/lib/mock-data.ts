@@ -1,95 +1,54 @@
 
 import type { Stock, NewsArticle, MarketMover, SentimentDataPoint, PortfolioPosition } from '@/lib/types';
 import { v4 as uuidv4 } from 'uuid';
-import { fetchRealTimeStockData } from '@/services/stock-api-service'; // Import the new service
+// The fetchRealTimeStockData (polling version) is no longer the primary update mechanism.
+// We keep fetchInitialStockDetails if needed for static data.
+// import { fetchInitialStockDetails } from '@/services/stock-api-service'; 
 
 const generateRandomChartData = (): { month: string; price: number }[] => {
   const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  let lastPrice = Math.random() * 200 + 50;
-  return months.map(month => {
-    lastPrice += (Math.random() - 0.45) * 20; // Price can go up or down
+  let lastPrice = Math.random() * 200 + 50; // Start with a random base price
+  // Simulate a more realistic historical trend (e.g., general upward trend with volatility)
+  const trendFactor = (Math.random() - 0.3) * 5; // Allow for overall positive or slight negative long-term trend
+  
+  return months.map((month, index) => {
+    // Add some volatility and trend influence
+    lastPrice += (Math.random() - 0.48) * (lastPrice * 0.1) + (trendFactor * (index / months.length));
     if (lastPrice < 10) lastPrice = 10; // Floor price
     return { month, price: parseFloat(lastPrice.toFixed(2)) };
   });
 };
 
+
+const initialStockDetails = (symbol: string, name: string, basePrice: number, dataAiHint: string) => ({
+  symbol,
+  name,
+  price: basePrice, // Initial price, will be updated by WebSocket
+  change: parseFloat(((Math.random() - 0.5) * (basePrice * 0.05)).toFixed(2)), // Initial small random change
+  changePercent: parseFloat((((Math.random() - 0.5) * 0.05)).toFixed(4)), // Initial small random change percent
+  marketCap: formatLargeNumber(basePrice * (Math.random() * 50000000 + 10000000)), // Example market cap
+  volume: formatLargeNumber(Math.floor(Math.random() * 10000000 + 1000000)), // Example volume
+  avgVolume: formatLargeNumber(Math.floor(Math.random() * 15000000 + 2000000)),
+  peRatio: parseFloat((Math.random() * 30 + 10).toFixed(2)), // Example P/E
+  high52Week: parseFloat((basePrice * (1 + Math.random() * 0.3 + 0.1)).toFixed(2)), // ~10-40% above base
+  low52Week: parseFloat((basePrice * (1 - Math.random() * 0.3 - 0.05)).toFixed(2)),  // ~5-35% below base
+  logoUrl: `https://placehold.co/40x40.png`,
+  dataAiHint,
+  chartData: generateRandomChartData(),
+  previousClose: parseFloat((basePrice - ((Math.random() - 0.5) * (basePrice * 0.02))).toFixed(2)) // Store a plausible previous close
+});
+
+
 export const mockStocks: Stock[] = [
-  {
-    symbol: 'AAPL',
-    name: 'Apple Inc.',
-    price: 170.34,
-    change: 1.25,
-    changePercent: 0.0074,
-    marketCap: formatLargeNumber(2700000000000),
-    volume: formatLargeNumber(75000000),
-    logoUrl: 'https://placehold.co/40x40.png',
-    dataAiHint: 'apple logo',
-    chartData: generateRandomChartData(),
-  },
-  {
-    symbol: 'MSFT',
-    name: 'Microsoft Corp.',
-    price: 420.72,
-    change: -0.50,
-    changePercent: -0.0012,
-    marketCap: formatLargeNumber(3100000000000),
-    volume: formatLargeNumber(22000000),
-    logoUrl: 'https://placehold.co/40x40.png',
-    dataAiHint: 'microsoft logo',
-    chartData: generateRandomChartData(),
-  },
-  {
-    symbol: 'GOOGL',
-    name: 'Alphabet Inc. (C)',
-    price: 152.20,
-    change: 2.10,
-    changePercent: 0.0140,
-    marketCap: formatLargeNumber(1900000000000),
-    volume: formatLargeNumber(30000000),
-    logoUrl: 'https://placehold.co/40x40.png',
-    dataAiHint: 'google logo',
-    chartData: generateRandomChartData(),
-  },
-  {
-    symbol: 'AMZN',
-    name: 'Amazon.com Inc.',
-    price: 180.00,
-    change: -1.80,
-    changePercent: -0.0099,
-    marketCap: formatLargeNumber(1850000000000),
-    volume: formatLargeNumber(45000000),
-    logoUrl: 'https://placehold.co/40x40.png',
-    dataAiHint: 'amazon logo',
-    chartData: generateRandomChartData(),
-  },
-  {
-    symbol: 'TSLA',
-    name: 'Tesla, Inc.',
-    price: 175.79,
-    change: 5.60,
-    changePercent: 0.0329,
-    marketCap: formatLargeNumber(560000000000),
-    volume: formatLargeNumber(110000000),
-    logoUrl: 'https://placehold.co/40x40.png',
-    dataAiHint: 'tesla logo',
-    chartData: generateRandomChartData(),
-  },
-  {
-    symbol: 'NVDA',
-    name: 'NVIDIA Corporation',
-    price: 900.50,
-    change: -10.20,
-    changePercent: -0.0112,
-    marketCap: formatLargeNumber(2250000000000),
-    volume: formatLargeNumber(50000000),
-    logoUrl: 'https://placehold.co/40x40.png',
-    dataAiHint: 'nvidia logo',
-    chartData: generateRandomChartData(),
-  },
+  initialStockDetails('AAPL', 'Apple Inc.', 170.34, 'apple logo'),
+  initialStockDetails('MSFT', 'Microsoft Corp.', 420.72, 'microsoft logo'),
+  initialStockDetails('GOOGL', 'Alphabet Inc. (C)', 152.20, 'google logo'),
+  initialStockDetails('AMZN', 'Amazon.com Inc.', 180.00, 'amazon logo'),
+  initialStockDetails('TSLA', 'Tesla, Inc.', 175.79, 'tesla logo'),
+  initialStockDetails('NVDA', 'NVIDIA Corporation', 900.50, 'nvidia logo'),
 ];
 
 export const getStockBySymbol = (symbol: string): Stock | undefined => {
-  // Return a copy to prevent direct mutation of mockStocks if needed elsewhere
   const stock = mockStocks.find(stock => stock.symbol === symbol);
   return stock ? { ...stock } : undefined;
 };
@@ -126,23 +85,20 @@ export const mockNews: NewsArticle[] = Array.from({ length: 10 }, (_, i) => {
   };
 });
 
-// Function to simulate stock price updates by "fetching" from our (mock) API service
+// getUpdatedMockStocks is no longer the primary source of updates for WebSocket architecture.
+// It could be repurposed to fetch *initial static data* for all mock stocks if needed,
+// but dynamic updates will come from the WebSocket context.
+// For now, its usage is removed from pages.
+/*
 export async function getUpdatedMockStocks(): Promise<Stock[]> {
-  const updatedStocks = await Promise.all(
-    mockStocks.map(async (stock) => {
-      const realTimeData = await fetchRealTimeStockData(stock.symbol);
-      if (realTimeData) {
-        // Merge fetched data. Prioritize fetched data for dynamic fields.
-        return {
-          ...stock, // Keep static data like name, logo, initial chartData
-          ...realTimeData, // Overwrite with new price, change, volume, marketCap
-        };
-      }
-      return stock; // Return original if fetch failed or no data
-    })
-  );
-  return updatedStocks;
+  console.warn("getUpdatedMockStocks (polling) is deprecated in WebSocket mode. Static data is used initially.");
+  // This function would ideally fetch the *initial* state if WebSockets don't provide it,
+  // or be removed if initial state is part of mockStocks directly and WebSockets take over.
+  // For now, it just returns the base mockStocks array.
+  return Promise.resolve(mockStocks.map(stock => ({...stock}))); 
 }
+*/
+
 
 export const mockMarketMovers: { gainers: MarketMover[], losers: MarketMover[], active: MarketMover[] } = {
   gainers: mockStocks.slice(0,3).map(s => ({...s, type: 'gainer', change: Math.abs(s.change), changePercent: Math.abs(s.changePercent) })).sort((a,b) => b.changePercent - a.changePercent),
@@ -151,25 +107,22 @@ export const mockMarketMovers: { gainers: MarketMover[], losers: MarketMover[], 
 };
 
 export const mockSentimentData: SentimentDataPoint[] = [
-  { name: 'Positive', value: 45, fill: 'hsl(var(--chart-4))' }, // Greenish
-  { name: 'Negative', value: 25, fill: 'hsl(var(--chart-5))' }, // Reddish
-  { name: 'Neutral', value: 30, fill: 'hsl(var(--chart-3))' },  // Yellowish/Orange
+  { name: 'Positive', value: 45, fill: 'hsl(var(--chart-4))' }, 
+  { name: 'Negative', value: 25, fill: 'hsl(var(--chart-5))' }, 
+  { name: 'Neutral', value: 30, fill: 'hsl(var(--chart-3))' },  
 ];
 
-// Sample portfolio data
-export const mockPortfolio: Omit<PortfolioPosition, 'currentPrice'>[] = [
+export const mockPortfolio: Omit<PortfolioPosition, 'currentPrice' | 'name' | 'logoUrl' | 'dataAiHint'>[] = [
   { symbol: 'AAPL', shares: 10, avgPurchasePrice: 150.00 },
   { symbol: 'MSFT', shares: 5, avgPurchasePrice: 400.00 },
   { symbol: 'TSLA', shares: 20, avgPurchasePrice: 160.00 },
   { symbol: 'GOOGL', shares: 15, avgPurchasePrice: 140.00 },
 ];
 
-
-// Helper function from mock-data.ts
 function formatLargeNumber(num: number): string {
   if (num === null || num === undefined || isNaN(num)) return 'N/A';
   if (Math.abs(num) < 1_000_000) {
-    return num.toLocaleString();
+    return num.toLocaleString(undefined, {maximumFractionDigits: 0});
   }
   if (Math.abs(num) < 1_000_000_000) {
     return (num / 1_000_000).toFixed(2) + 'M';
