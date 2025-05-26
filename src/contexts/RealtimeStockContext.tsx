@@ -3,7 +3,7 @@
 import type { RealtimeStockData } from '@/lib/types';
 import { mockStocks } from '@/lib/mock-data';
 import { fetchAlphaVantageQuote, fetchInitialStockDetails } from '@/services/stock-api-service';
-import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useRef } from 'react';
 
 interface RealtimeStockContextState {
   stockData: Record<string, RealtimeStockData>;
@@ -43,14 +43,28 @@ export const RealtimeStockProvider: React.FC<RealtimeStockProviderProps> = ({ ch
   const [error, setError] = useState<string | null>(null);
   const [apiKey] = useState(process.env.NEXT_PUBLIC_ALPHA_VANTAGE_API_KEY);
 
+  // Refs to hold the latest values of state without causing useCallback to re-create functions
+  const stockDataRef = useRef(stockData);
+  const subscribedSymbolsRef = useRef(subscribedSymbols);
+
+  useEffect(() => {
+    stockDataRef.current = stockData;
+  }, [stockData]);
+
+  useEffect(() => {
+    subscribedSymbolsRef.current = subscribedSymbols;
+  }, [subscribedSymbols]);
+
+  useEffect(() => {
+    console.log('[StockDataProvider] API Key loaded:', apiKey);
+  }, [apiKey]);
+
   const subscribeToSymbol = useCallback((symbol: string) => {
     setSubscribedSymbols(prev => {
       if (prev.has(symbol)) return prev;
       const newSet = new Set(prev);
       newSet.add(symbol);
-      console.log('[StockDataProvider] Added to subscription queue:', symbol, 'New set:', Array.from(newSet));
-      // Optionally trigger a fetch for the newly subscribed symbol
-      // refreshStockData([symbol]); // Be mindful of rate limits if called too often
+      console.log('[StockDataProvider] Subscribed to symbol:', symbol, 'Current subscriptions:', Array.from(newSet));
       return newSet;
     });
   }, []);
@@ -59,15 +73,15 @@ export const RealtimeStockProvider: React.FC<RealtimeStockProviderProps> = ({ ch
     setSubscribedSymbols(prev => {
       const newSet = new Set(prev);
       if (newSet.delete(symbol)) {
-        console.log('[StockDataProvider] Removed from subscription queue:', symbol, 'New set:', Array.from(newSet));
+        console.log('[StockDataProvider] Unsubscribed from symbol:', symbol, 'Current subscriptions:', Array.from(newSet));
       }
       return newSet;
     });
   }, []);
 
   const refreshStockData = useCallback(async (symbolsToRefreshInput?: string[] | string) => {
-    if (!apiKey || apiKey === "YOUR_API_KEY_HERE") {
-      const msg = "Alpha Vantage API key is not configured. Real-time updates are disabled. Please set NEXT_PUBLIC_ALPHA_VANTAGE_API_KEY in your .env file and restart the server.";
+    if (!apiKey || apiKey === "YOUR_API_KEY_HERE" || apiKey === "OM1ZC4CCCCKIGT8O_REPLACE_WITH_YOUR_KEY") {
+      const msg = "Alpha Vantage API key is not configured. Real-time updates are disabled. Please set NEXT_PUBLIC_ALPHA_VANTAGE_API_KEY in your .env file.";
       console.error(msg);
       setError(msg);
       setIsLoading(false);
@@ -80,7 +94,8 @@ export const RealtimeStockProvider: React.FC<RealtimeStockProviderProps> = ({ ch
     } else if (Array.isArray(symbolsToRefreshInput)) {
       symbolsToFetchArray = symbolsToRefreshInput;
     } else {
-      symbolsToFetchArray = Array.from(subscribedSymbols);
+      // Use the ref to get current subscribedSymbols if no specific list is provided
+      symbolsToFetchArray = Array.from(subscribedSymbolsRef.current);
     }
 
     if (symbolsToFetchArray.length === 0) {
@@ -95,16 +110,18 @@ export const RealtimeStockProvider: React.FC<RealtimeStockProviderProps> = ({ ch
     const promises = symbolsToFetchArray.map(async (symbol) => {
       try {
         const quoteData = await fetchAlphaVantageQuote(symbol, apiKey);
-        // Fetch initial details if not already present or to supplement quote
-        const baseDetails = stockData[symbol] || await fetchInitialStockDetails(symbol);
+        
+        // Use stockDataRef to access current stock data without adding stockData to useCallback deps
+        const currentSymbolData = stockDataRef.current[symbol];
+        const baseDetails = currentSymbolData || await fetchInitialStockDetails(symbol);
 
         if (quoteData) {
-          setStockData(prevData => {
+          setStockData(prevData => { // Functional update to setStockData
             const updatedStock: RealtimeStockData = {
-              ...(baseDetails || {}), // Start with base details (name, logo, chartData etc.)
-              ...prevData[symbol],    // Overlay with existing data in state
-              ...quoteData,           // Overlay with new quote data
-              symbol: symbol,         // Ensure symbol is correctly set
+              ...(baseDetails || {}), 
+              ...prevData[symbol],    
+              ...quoteData,          
+              symbol: symbol,         
               name: baseDetails?.name || prevData[symbol]?.name || symbol,
               logoUrl: baseDetails?.logoUrl || prevData[symbol]?.logoUrl,
               dataAiHint: baseDetails?.dataAiHint || prevData[symbol]?.dataAiHint,
@@ -115,35 +132,25 @@ export const RealtimeStockProvider: React.FC<RealtimeStockProviderProps> = ({ ch
           });
         } else {
           console.warn(`[StockDataProvider] No quote data returned for ${symbol}. It might be an invalid symbol or API issue.`);
-          // Optionally, set an error for this specific symbol or leave it as is
         }
       } catch (err: any) {
         console.error(`[StockDataProvider] Error refreshing data for ${symbol}:`, err.message);
-        // Set a general error, or per-symbol error if your state supports it
-        setError(prevError => `${prevError ? prevError + '; ' : ''}Failed to fetch ${symbol}: ${err.message}`);
+        if (err.message.includes("API call frequency is")) {
+             setError(prevError => `${prevError ? prevError + '; ' : ''}API limit likely reached for ${symbol}. ${err.message}`);
+        } else {
+            setError(prevError => `${prevError ? prevError + '; ' : ''}Failed to fetch ${symbol}.`);
+        }
       }
     });
 
     try {
-        await Promise.allSettled(promises); // Use allSettled to wait for all fetches, even if some fail
+        await Promise.allSettled(promises); 
     } finally {
         setIsLoading(false);
         console.log('[StockDataProvider] Finished refreshing data cycle.');
     }
-
-  }, [apiKey, subscribedSymbols, stockData]); // Include stockData to access baseDetails if needed
-
-  // Example: Fetch data for all subscribed symbols when the component mounts (optional)
-  // Be very careful with this due to Alpha Vantage rate limits.
-  // Consider if this initial fetch is necessary or if components should trigger it.
-  /*
-  useEffect(() => {
-    if (subscribedSymbols.size > 0 && apiKey && apiKey !== "YOUR_API_KEY_HERE") {
-      console.log("[StockDataProvider] Initial mount: refreshing all subscribed symbols.");
-      refreshStockData(Array.from(subscribedSymbols));
-    }
-  }, [apiKey]); // Only run when apiKey is available, subscribedSymbols changes are handled by components
-  */
+  // Only depend on apiKey, as other state values are accessed via refs or functional updates.
+  }, [apiKey]); 
 
   return (
     <RealtimeStockContext.Provider value={{ stockData, subscribedSymbols, subscribeToSymbol, unsubscribeFromSymbol, refreshStockData, isLoading, error }}>
