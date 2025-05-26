@@ -11,7 +11,7 @@ import { NewsCard } from '@/components/common/NewsCard';
 import { mockStocks, mockNews, mockMarketMovers, mockSentimentData, getUpdatedMockStocks } from '@/lib/mock-data';
 import type { Stock, NewsArticle, MarketMover, SentimentDataPoint } from '@/lib/types';
 import { ChartContainer, ChartTooltip, ChartTooltipContent, ChartLegend, ChartLegendContent } from "@/components/ui/chart";
-import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Line, LineChart, ResponsiveContainer, Tooltip as RechartsTooltip, Legend as RechartsLegend, Cell } from 'recharts';
+import { Bar, BarChart as RechartsBarChart, CartesianGrid, XAxis, YAxis, Line, LineChart, ResponsiveContainer, Tooltip as RechartsTooltip, Legend as RechartsLegend, Cell } from 'recharts'; // Aliased BarChart to RechartsBarChart
 import { formatCurrency, formatPercentage, formatDate } from '@/lib/formatters';
 import Link from 'next/link';
 
@@ -74,7 +74,7 @@ export default function DashboardPage() {
               <CardDescription>
                 Price: {formatCurrency(marketOverviewStock.price)}
                 <span className={marketOverviewStock.change >= 0 ? 'text-green-500' : 'text-red-500'}>
-                  {' '} ({marketOverviewStock.change >= 0 ? '+' : ''}{formatCurrency(marketOverviewStock.change, '', 2)} / {formatPercentage(marketOverviewStock.changePercent, 2)})
+                  {' '} ({marketOverviewStock.change >= 0 ? '+' : ''}{formatCurrency(marketOverviewStock.change)} / {formatPercentage(marketOverviewStock.changePercent, 2)})
                 </span>
               </CardDescription>
             </CardHeader>
@@ -121,10 +121,10 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent>
               <Tabs defaultValue="gainers" className="w-full">
-                <TabsList className="grid w-full grid-cols-3">
-                  <TabsTrigger value="gainers" className="w-full"><TrendingUp className="mr-1 h-4 w-4" />Gainers</TabsTrigger>
-                  <TabsTrigger value="losers" className="w-full"><TrendingDown className="mr-1 h-4 w-4" />Losers</TabsTrigger>
-                  <TabsTrigger value="active" className="w-full"><Zap className="mr-1 h-4 w-4" />Active</TabsTrigger>
+                <TabsList className="flex w-full">
+                  <TabsTrigger value="gainers" className="flex-1 w-full"><TrendingUp className="mr-1 h-4 w-4" />Gainers</TabsTrigger>
+                  <TabsTrigger value="losers" className="flex-1 w-full"><TrendingDown className="mr-1 h-4 w-4" />Losers</TabsTrigger>
+                  <TabsTrigger value="active" className="flex-1 w-full"><Zap className="mr-1 h-4 w-4" />Active</TabsTrigger>
                 </TabsList>
                 <TabsContent value="gainers" className="mt-4 space-y-3">
                   {mockMarketMovers.gainers.map(renderMarketMoverCard)}
@@ -145,7 +145,7 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent>
               <ChartContainer config={chartConfig} className="h-[150px] w-full">
-                <BarChart data={mockSentimentData} layout="vertical" margin={{left:10, right:10}}>
+                <RechartsBarChart data={mockSentimentData} layout="vertical" margin={{left:10, right:10}}>
                   <CartesianGrid horizontal={false} />
                   <XAxis type="number" hide />
                   <YAxis dataKey="name" type="category" tickLine={false} axisLine={false} />
@@ -155,7 +155,7 @@ export default function DashboardPage() {
                         <Cell key={`cell-${entry.name}`} fill={entry.fill} />
                       ))}
                   </Bar>
-                </BarChart>
+                </RechartsBarChart>
               </ChartContainer>
             </CardContent>
           </Card>
@@ -163,7 +163,7 @@ export default function DashboardPage() {
       </div>
       
       {/* Recent News Section */}
-      <Card className="shadow-lg">
+      <Card className="shadow-lg w-full">
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
             Recent News
@@ -182,4 +182,3 @@ export default function DashboardPage() {
     </div>
   );
 }
-
