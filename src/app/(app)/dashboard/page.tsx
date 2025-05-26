@@ -1,3 +1,4 @@
+
 "use client";
 import { PageHeader } from "@/components/common/PageHeader";
 import { mockStocks, mockNews, getUpdatedMockStocks } from "@/lib/mock-data";
@@ -9,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AreaChart, BarChart3, Newspaper, TrendingUp, TrendingDown, Activity } from "lucide-react";
 import { ChartContainer, ChartTooltip, ChartTooltipContent, ChartLegend, ChartLegendContent } from "@/components/ui/chart";
 import type { ChartConfig } from "@/components/ui/chart";
-import { Bar, BarChart, CartesianGrid, XAxis, YAxis, ResponsiveContainer, Line, LineChart as RechartsLineChart } from "recharts";
+import { Bar, BarChart, CartesianGrid, XAxis, YAxis, ResponsiveContainer, Line, LineChart as RechartsLineChart, Cell } from "recharts";
 import React, { useEffect, useState } from "react";
 import { analyzeNewsSentimentAction } from "@/lib/actions/sentiment";
 import { useToast } from "@/hooks/use-toast";
@@ -106,9 +107,9 @@ export default function DashboardPage() {
           <CardContent>
             <Tabs defaultValue="gainers">
               <TabsList className="grid w-full grid-cols-3 mb-4">
-                <TabsTrigger value="gainers"><TrendingUp className="h-4 w-4 mr-1 inline-block" />Gainers</TabsTrigger>
-                <TabsTrigger value="losers"><TrendingDown className="h-4 w-4 mr-1 inline-block" />Losers</TabsTrigger>
-                <TabsTrigger value="active"><Activity className="h-4 w-4 mr-1 inline-block" />Active</TabsTrigger>
+                <TabsTrigger value="gainers"><TrendingUp className="h-4 w-4 mr-1" />Gainers</TabsTrigger>
+                <TabsTrigger value="losers"><TrendingDown className="h-4 w-4 mr-1" />Losers</TabsTrigger>
+                <TabsTrigger value="active"><Activity className="h-4 w-4 mr-1" />Active</TabsTrigger>
               </TabsList>
               <TabsContent value="gainers" className="space-y-3">
                 {topGainers.map(stock => <MinimalStockCard key={stock.symbol} stock={stock} />)}
@@ -147,8 +148,8 @@ export default function DashboardPage() {
                     <YAxis dataKey="sentiment" type="category" stroke="hsl(var(--muted-foreground))" width={60} />
                     <ChartTooltip cursor={{fill: 'hsl(var(--muted))'}} content={<ChartTooltipContent />} />
                     <Bar dataKey="count" radius={4}>
-                      {newsSentimentData.map((entry) => (
-                         <div key={entry.sentiment} style={{ backgroundColor: entry.fill }} />
+                      {newsSentimentData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.fill} />
                       ))}
                     </Bar>
                   </BarChart>
@@ -160,3 +161,4 @@ export default function DashboardPage() {
     </div>
   );
 }
+
