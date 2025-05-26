@@ -4,14 +4,14 @@
  * @fileOverview An AI Investment Assistant flow that provides advice based on user queries.
  *
  * - aiInvestmentAssistant - A function that handles investment-related queries.
- * - AiInvestmentAssistantInputSchema - The input type for the aiInvestmentAssistant function.
- * - AiInvestmentAssistantOutputSchema - The return type for the aiInvestmentAssistant function.
+ * - AiInvestmentAssistantInput - The input type for the aiInvestmentAssistant function.
+ * - AiInvestmentAssistantOutput - The return type for the aiInvestmentAssistant function.
  */
 import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
 
-// Define Zod Schemas for input and output
-export const AiInvestmentAssistantInputSchema = z.object({
+// Define Zod Schemas for input and output (local constants, not exported)
+const AiInvestmentAssistantInputSchema = z.object({
   query: z.string().describe('The user question about the market, a particular stock, or investment strategies.'),
   userProfile: z.object({
     riskTolerance: z.enum(['low', 'medium', 'high']).optional().describe('The user\'s risk tolerance.'),
@@ -20,7 +20,7 @@ export const AiInvestmentAssistantInputSchema = z.object({
 });
 export type AiInvestmentAssistantInput = z.infer<typeof AiInvestmentAssistantInputSchema>;
 
-export const AiInvestmentAssistantOutputSchema = z.object({
+const AiInvestmentAssistantOutputSchema = z.object({
   answer: z.string().describe('The summarized insights and advice to help the user make informed decisions.'),
   confidenceScore: z.number().min(0).max(1).optional().describe('A score indicating the confidence in the provided advice (0-1).'),
   suggestedNextQuestions: z.array(z.string()).optional().describe('Questions the user might want to ask next.'),
