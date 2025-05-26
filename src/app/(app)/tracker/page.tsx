@@ -91,7 +91,7 @@ export default function TrackerPage() {
                 <CardDescription>
                   Current Price: {formatCurrency(selectedStockForChart.price)}
                   <span className={cn("ml-2", selectedStockForChart.change >= 0 ? 'text-green-500' : 'text-red-500')}>
-                     ({selectedStockForChart.change >= 0 ? '+' : ''}{formatCurrency(selectedStockForChart.change, '', 2)} / {formatPercentage(selectedStockForChart.changePercent, 2)})
+                     ({selectedStockForChart.change >= 0 ? '+' : ''}{formatCurrency(selectedStockForChart.change)} / {formatPercentage(selectedStockForChart.changePercent, 2)})
                   </span>
                 </CardDescription>
               )}
@@ -225,3 +225,5 @@ export default function TrackerPage() {
     </div>
   );
 }
+
+    
