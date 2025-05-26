@@ -106,10 +106,16 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <Tabs defaultValue="gainers">
-              <TabsList className="grid w-full grid-cols-3 mb-4">
-                <TabsTrigger value="gainers" className="w-full"><TrendingUp className="h-4 w-4 mr-1" />Gainers</TabsTrigger>
-                <TabsTrigger value="losers" className="w-full"><TrendingDown className="h-4 w-4 mr-1" />Losers</TabsTrigger>
-                <TabsTrigger value="active" className="w-full"><Activity className="h-4 w-4 mr-1" />Active</TabsTrigger>
+              <TabsList className="flex w-full mb-4">
+                <TabsTrigger value="gainers" className="flex-1">
+                  <TrendingUp className="h-4 w-4 mr-1" />Gainers
+                </TabsTrigger>
+                <TabsTrigger value="losers" className="flex-1">
+                  <TrendingDown className="h-4 w-4 mr-1" />Losers
+                </TabsTrigger>
+                <TabsTrigger value="active" className="flex-1">
+                  <Activity className="h-4 w-4 mr-1" />Active
+                </TabsTrigger>
               </TabsList>
               <TabsContent value="gainers" className="space-y-3">
                 {topGainers.map(stock => <MinimalStockCard key={stock.symbol} stock={stock} />)}
