@@ -2,7 +2,7 @@
 "use client";
 import React from 'react';
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation"; // Added useRouter
 import {
   Sidebar,
   SidebarHeader,
@@ -12,7 +12,7 @@ import {
   SidebarMenuItem,
   SidebarMenuButton,
   SidebarTrigger,
-  SidebarInset, 
+  SidebarInset,
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -26,22 +26,59 @@ import {
   AreaChart,
   Settings,
   PanelLeft,
-  Briefcase, 
+  Briefcase,
+  LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useToast } from "@/hooks/use-toast";
 
-const navItems = [
+const mainNavItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/watchlist", label: "Watchlist", icon: ListChecks },
-  { href: "/portfolio", label: "My Portfolio", icon: Briefcase }, 
+  // TEMPORARY DIAGNOSTIC: Watchlist link now points to /dashboard
+  { href: "/dashboard", label: "Watchlist (Test->Dash)", icon: ListChecks },
+  { href: "/portfolio", label: "My Portfolio", icon: Briefcase },
   { href: "/alerts", label: "Alerts", icon: BellRing },
   { href: "/sentiment", label: "Sentiment Analysis", icon: Sparkles },
   { href: "/assistant", label: "AI Assistant", icon: Bot },
   { href: "/tracker", label: "Live Tracker", icon: LineChart },
 ];
 
+const settingsNavItem = { href: "/settings", label: "Settings", icon: Settings };
+
+
 export function AppSidebar() {
   const pathname = usePathname();
+  const router = useRouter();
+  const { toast } = useToast();
+
+  const handleLogout = () => {
+    // Clear localStorage items
+    localStorage.removeItem('marketwatch_watchlist_v1');
+    localStorage.removeItem('marketwatch_ai_alerts_v1');
+    localStorage.removeItem('marketwatch_ai_user_portfolio_v1');
+    localStorage.removeItem('marketwatch_username');
+    localStorage.removeItem('marketwatch_email');
+    localStorage.removeItem('marketwatch_market_alerts_enabled');
+    localStorage.removeItem('marketwatch_news_digest_enabled');
+    localStorage.removeItem('marketwatch_theme');
+
+    // Optionally, reset theme to light mode or a default
+    document.documentElement.classList.remove('dark');
+
+    toast({
+      title: "Logged Out",
+      description: "You have been successfully logged out.",
+    });
+    router.push('/'); // Redirect to landing page
+  };
+
+  const isNavItemActive = (itemHref: string) => {
+    if (itemHref === "/dashboard") {
+      return pathname === itemHref;
+    }
+    return pathname.startsWith(itemHref);
+  };
+
 
   return (
     <Sidebar variant="sidebar" collapsible="icon" className="border-r border-sidebar-border">
@@ -61,11 +98,11 @@ export function AppSidebar() {
       <Separator className="mb-2" />
       <SidebarContent className="flex-grow">
         <SidebarMenu>
-          {navItems.map((item) => (
-            <SidebarMenuItem key={item.href}>
+          {mainNavItems.map((item) => (
+            <SidebarMenuItem key={item.label}> {/* Changed key to item.label for the test to avoid conflict if hrefs are same */}
               <SidebarMenuButton
                 asChild
-                isActive={pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href))}
+                isActive={isNavItemActive(item.href)}
                 tooltip={item.label}
               >
                 <Link href={item.href}>
@@ -81,12 +118,28 @@ export function AppSidebar() {
       <SidebarFooter className="p-3">
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton asChild tooltip="Settings" isActive={pathname === "/settings"}>
-              <Link href="/settings">
-                <Settings />
-                <span>Settings</span>
+            <SidebarMenuButton
+              asChild
+              tooltip={settingsNavItem.label}
+              isActive={isNavItemActive(settingsNavItem.href)}
+            >
+              <Link href={settingsNavItem.href}>
+                <settingsNavItem.icon />
+                <span>{settingsNavItem.label}</span>
               </Link>
             </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <Button
+              variant="destructive"
+              className="w-full justify-start group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-2"
+              onClick={handleLogout}
+              aria-label="Logout"
+              title="Logout" // Tooltip for collapsed state
+            >
+              <LogOut className="group-data-[collapsible=icon]:mr-0 mr-2 h-4 w-4" />
+              <span className="group-data-[collapsible=icon]:hidden">Logout</span>
+            </Button>
           </SidebarMenuItem>
         </SidebarMenu>
         <div className="mt-4 text-center text-xs text-muted-foreground group-data-[collapsible=icon]:hidden">
