@@ -49,31 +49,26 @@ export default function DashboardPage() {
 
   useEffect(() => {
     setIsMounted(true);
-    // Subscribe to necessary symbols
     allDashboardSymbolsToRefresh.forEach(subscribeToSymbol);
 
     const fetchNewsAndInitialStock = async () => {
-      // console.log('[DashboardPage] useEffect: Attempting to fetch news and initial stock...');
       setIsLoadingNews(true);
       setNewsError(null);
       try {
         const newsResult = await getNewsArticlesAction('finance market', 3);
-        // console.log('[DashboardPage] useEffect: News fetch result:', newsResult);
         if (newsResult.error) {
           setNewsError(newsResult.error);
         } else if (newsResult.articles) {
           setRecentNews(newsResult.articles);
         }
       } catch (e: any) {
-        console.error("[DashboardPage] Exception during news fetch:", e);
         setNewsError("An unexpected error occurred while fetching news.");
       } finally {
         setIsLoadingNews(false);
       }
 
       if (selectedMarketSymbol) {
-        // console.log('[DashboardPage] Initial auto-fetch for market overview stock:', selectedMarketSymbol);
-        await refreshStockData([selectedMarketSymbol]);
+        await refreshStockData([selectedMarketSymbol]); // Only fetch market overview stock initially
       }
     };
 
@@ -82,8 +77,10 @@ export default function DashboardPage() {
     return () => {
       allDashboardSymbolsToRefresh.forEach(unsubscribeFromSymbol);
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isMounted, marketOverviewStockSymbol]); // Keep refreshStockData, sub/unsub out of deps if they are stable
+  // Only re-run if these stable functions/values change, or on mount.
+  // isMounted is not a dependency because its change doesn't need to re-trigger subscriptions or fetches.
+  // selectedMarketSymbol changing will trigger allDashboardSymbolsToRefresh to change.
+  }, [allDashboardSymbolsToRefresh, subscribeToSymbol, unsubscribeFromSymbol, selectedMarketSymbol, refreshStockData]);
 
 
   const marketOverviewStock = useMemo(() => {
@@ -102,6 +99,7 @@ export default function DashboardPage() {
       const baseStockInfo = mockStocks.find(s => s.symbol === pos.symbol);
       const currentRealtimeData = realtimeStockData[pos.symbol];
 
+      // Use realtime price if available and component is mounted, otherwise fallback
       const currentPrice = (isMounted && currentRealtimeData?.price !== undefined) ? currentRealtimeData.price : (baseStockInfo?.price || pos.avgPurchasePrice);
 
       const initialCost = pos.shares * pos.avgPurchasePrice;
@@ -139,12 +137,15 @@ export default function DashboardPage() {
         if (isMounted && rtData && rtData.price !== undefined) {
           return { ...baseMoverInfo, ...rtData, name: baseMoverInfo?.name || rtData.name || mover.symbol, type: mover.type } as MarketMover;
         }
+        // Fallback to base mover info if no realtime data or not mounted yet
         return { ...baseMoverInfo, ...mover, name: baseMoverInfo?.name || mover.name || mover.symbol } as MarketMover;
-      }).filter(mover => mover.symbol && mover.name);
+      }).filter(mover => mover.symbol && mover.name); // Ensure basic validity
     };
+    // Apply updateMoverList to each category
     const gainers = updateMoverList(initialMarketMovers.gainers).sort((a,b) => (b.changePercent || 0) - (a.changePercent || 0));
     const losers = updateMoverList(initialMarketMovers.losers).sort((a,b) => (a.changePercent || 0) - (b.changePercent || 0));
     const active = updateMoverList(initialMarketMovers.active).sort((a,b) => {
+        // Prioritize realtime dailyVolume if available
         const volumeA = realtimeStockData[a.symbol]?.dailyVolume ?? parseFloat(a.volume?.replace(/[^0-9.]/g, '') || '0');
         const volumeB = realtimeStockData[b.symbol]?.dailyVolume ?? parseFloat(b.volume?.replace(/[^0-9.]/g, '') || '0');
         return volumeB - volumeA;
@@ -165,23 +166,18 @@ export default function DashboardPage() {
 
   const handleRefreshAllDashboardData = async () => {
     if (allDashboardSymbolsToRefresh.length > 0) {
-        // console.log('[DashboardPage] Manual refresh triggered for symbols:', allDashboardSymbolsToRefresh);
         await refreshStockData(allDashboardSymbolsToRefresh);
     }
-    // Re-fetch news on manual refresh too
-    // console.log('[DashboardPage] Manual Refresh: Attempting to fetch news...');
     setIsLoadingNews(true);
     setNewsError(null);
     try {
         const result = await getNewsArticlesAction('finance market', 3);
-        // console.log('[DashboardPage] Manual Refresh: News fetch result:', result);
         if (result.error) {
           setNewsError(result.error);
         } else if (result.articles) {
           setRecentNews(result.articles);
         }
     } catch(e: any) {
-        console.error("[DashboardPage] Manual Refresh: Exception during news fetch:", e);
         setNewsError("An unexpected error occurred while fetching news.");
     } finally {
         setIsLoadingNews(false);

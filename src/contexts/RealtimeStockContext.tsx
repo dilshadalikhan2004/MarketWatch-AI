@@ -1,7 +1,7 @@
 
 "use client";
 import type { RealtimeStockData, Stock } from '@/lib/types';
-import { mockStocks } from '@/lib/mock-data';
+import { mockStocks as baseMockStocks } from '@/lib/mock-data';
 import { fetchAlphaVantageQuote, fetchInitialStockDetails } from '@/services/stock-api-service';
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useRef } from 'react';
 
@@ -32,19 +32,29 @@ interface RealtimeStockProviderProps {
 export const RealtimeStockProvider: React.FC<RealtimeStockProviderProps> = ({ children }) => {
   const [stockData, setStockData] = useState<Record<string, RealtimeStockData>>(() => {
     const initialData: Record<string, RealtimeStockData> = {};
-    mockStocks.forEach(stock => {
+    baseMockStocks.forEach(stock => {
       initialData[stock.symbol] = {
-        ...stock,
+        ...stock, // Includes price, change, changePercent from deterministic mock
         dailyVolume: parseFloat(stock.volume?.replace(/[^0-9.]/g, '') || '0'),
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        previousClose: stock.previousClose
       };
     });
-    // console.log('[StockDataProvider] Initialized stockData with mock data.');
     return initialData;
   });
   const [subscribedSymbols, setSubscribedSymbols] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Use a ref for isMounted to avoid it being a dependency in effects that shouldn't re-run on its change
+  const isMountedRef = useRef(false);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
 
   const [apiKey] = useState(process.env.NEXT_PUBLIC_ALPHA_VANTAGE_API_KEY);
 
@@ -60,13 +70,13 @@ export const RealtimeStockProvider: React.FC<RealtimeStockProviderProps> = ({ ch
   }, [subscribedSymbols]);
 
   useEffect(() => {
-    if (!apiKey || apiKey === "YOUR_API_KEY_HERE" || apiKey === "OM1ZC4CCCCKIGT8O_REPLACE_WITH_YOUR_KEY") {
-      const msg = "Alpha Vantage API key is not configured or is a placeholder. Real-time updates are disabled. Please set NEXT_PUBLIC_ALPHA_VANTAGE_API_KEY in your .env file.";
-      console.warn('[StockDataProvider] Configuration Issue:', msg);
+    if (!apiKey || apiKey === "YOUR_API_KEY_HERE" || apiKey === "OM1ZC4CCCCKIGT8O_REPLACE_WITH_YOUR_KEY" || apiKey === "OM1ZC4CCCCKIGT8O" || apiKey === "V89R5M3623Z4P7A6" ) {
+      const msg = "Alpha Vantage API key is not configured or is a placeholder/demo key. Real-time updates are disabled. Please set NEXT_PUBLIC_ALPHA_VANTAGE_API_KEY in your .env file with a valid key.";
+      // console.warn('[StockDataProvider] Configuration Issue:', msg);
       setError(msg);
     } else {
-      console.log('[StockDataProvider] Alpha Vantage API Key loaded.');
-      setError(null); 
+      // console.log('[StockDataProvider] Alpha Vantage API Key loaded.');
+      setError(null);
     }
   }, [apiKey]);
 
@@ -75,7 +85,6 @@ export const RealtimeStockProvider: React.FC<RealtimeStockProviderProps> = ({ ch
       if (prev.has(symbol)) return prev;
       const newSet = new Set(prev);
       newSet.add(symbol);
-      // console.log('[StockDataProvider] Subscribed to symbol:', symbol, 'Current subscriptions:', Array.from(newSet));
       return newSet;
     });
   }, []);
@@ -83,16 +92,15 @@ export const RealtimeStockProvider: React.FC<RealtimeStockProviderProps> = ({ ch
   const unsubscribeFromSymbol = useCallback((symbol: string) => {
     setSubscribedSymbols(prev => {
       const newSet = new Set(prev);
-      if (newSet.delete(symbol)) {
-        // console.log('[StockDataProvider] Unsubscribed from symbol:', symbol, 'Current subscriptions:', Array.from(newSet));
-      }
+      newSet.delete(symbol);
       return newSet;
     });
   }, []);
 
   const refreshStockData = useCallback(async (symbolsToRefreshInput?: string[] | string) => {
-    if (!apiKey || apiKey === "YOUR_API_KEY_HERE" || apiKey === "OM1ZC4CCCCKIGT8O_REPLACE_WITH_YOUR_KEY") {
-      const msg = "Alpha Vantage API key is not configured. Real-time updates are disabled. Please set NEXT_PUBLIC_ALPHA_VANTAGE_API_KEY in your .env file.";
+    if (!apiKey || apiKey === "YOUR_API_KEY_HERE" || apiKey === "OM1ZC4CCCCKIGT8O_REPLACE_WITH_YOUR_KEY" || apiKey === "OM1ZC4CCCCKIGT8O" || apiKey === "V89R5M3623Z4P7A6") {
+      const msg = "Alpha Vantage API key is not configured or is a placeholder/demo key. Real-time updates are disabled. Please set NEXT_PUBLIC_ALPHA_VANTAGE_API_KEY in your .env file with a valid key.";
+      // Only set error if it's not already this specific message to avoid loops
       if (!error?.includes("API key is not configured")) {
         setError(msg);
       }
@@ -109,51 +117,58 @@ export const RealtimeStockProvider: React.FC<RealtimeStockProviderProps> = ({ ch
       symbolsToFetchArray = Array.from(subscribedSymbolsRef.current);
     }
 
-    if (symbolsToFetchArray.length === 0) {
-      // console.log('[StockDataProvider] No symbols to refresh.');
-      return;
-    }
+    if (symbolsToFetchArray.length === 0) return;
 
-    // console.log('[StockDataProvider] Refreshing data for symbols:', symbolsToFetchArray.join(', '));
     setIsLoading(true);
-    // setError(null); // Clear previous non-config errors if needed, or be selective
+    // setError(null); // Clear previous non-config errors if needed - this might cause issues if an error just occurred
 
     const promises = symbolsToFetchArray.map(async (symbol) => {
       try {
         const quoteData = await fetchAlphaVantageQuote(symbol, apiKey);
-        const currentSymbolData = stockDataRef.current[symbol];
+        const currentSymbolData = stockDataRef.current[symbol]; // Use ref for current data
+        // Fetch base details (name, logo, chartData) only if not already present
         const baseDetails = (currentSymbolData && currentSymbolData.name) ? currentSymbolData : await fetchInitialStockDetails(symbol);
 
         if (quoteData) {
           setStockData(prevData => {
             const updatedStock: RealtimeStockData = {
-              ...(baseDetails || {}),
-              ...prevData[symbol],
-              ...quoteData,
-              symbol: symbol,
+              symbol: symbol, // Ensure symbol is always from the request
               name: baseDetails?.name || prevData[symbol]?.name || symbol,
               logoUrl: baseDetails?.logoUrl || prevData[symbol]?.logoUrl,
               dataAiHint: baseDetails?.dataAiHint || prevData[symbol]?.dataAiHint,
               chartData: baseDetails?.chartData || prevData[symbol]?.chartData || [],
-              previousClose: quoteData.previousClose ?? baseDetails?.previousClose ?? prevData[symbol]?.previousClose,
+              price: quoteData.price ?? prevData[symbol]?.price ?? baseDetails?.price ?? 0,
+              change: quoteData.change ?? prevData[symbol]?.change ?? baseDetails?.change ?? 0,
+              changePercent: quoteData.changePercent ?? prevData[symbol]?.changePercent ?? baseDetails?.changePercent ?? 0,
+              volume: quoteData.volume ?? prevData[symbol]?.volume ?? baseDetails?.volume,
+              dailyVolume: quoteData.dailyVolume ?? prevData[symbol]?.dailyVolume,
+              timestamp: quoteData.timestamp ?? Date.now(),
+              previousClose: quoteData.previousClose ?? prevData[symbol]?.previousClose ?? baseDetails?.previousClose,
+              marketCap: baseDetails?.marketCap || prevData[symbol]?.marketCap,
+              avgVolume: baseDetails?.avgVolume || prevData[symbol]?.avgVolume,
+              peRatio: baseDetails?.peRatio || prevData[symbol]?.peRatio,
+              high52Week: baseDetails?.high52Week || prevData[symbol]?.high52Week,
+              low52Week: baseDetails?.low52Week || prevData[symbol]?.low52Week,
             };
             return { ...prevData, [symbol]: updatedStock };
           });
         } else {
-           console.warn(`[StockDataProvider] No quote data returned for ${symbol}. It might be an invalid symbol or API issue.`);
+          // console.warn(`[StockDataProvider] No quote data returned for ${symbol}. It might be an invalid symbol or API issue.`);
         }
       } catch (err: any) {
         console.warn(`[StockDataProvider] Error refreshing data for ${symbol}:`, err.message);
-        if (err.message.includes("API key is not configured")) {
-             setError(err.message);
-        } else if (err.message.toLowerCase().includes("api call frequency") || err.message.toLowerCase().includes("rate limit") || err.message.includes("25 requests per day")) {
+        // More specific error handling for API limit messages
+        if (err.message.toLowerCase().includes("api call frequency is") || err.message.toLowerCase().includes("rate limit") || err.message.toLowerCase().includes("requests per day")) {
              setError(prevError => {
-                const newErrorMessage = `API limit likely reached. ${err.message}`;
+                const newErrorMessage = `API limit likely reached for ${symbol}. ${err.message}`;
                 return prevError && prevError.includes("API limit") ? prevError : `${prevError ? prevError + '; ' : ''}${newErrorMessage}`;
             });
+        } else if (err.message.includes("API key is not configured")) {
+             setError(err.message); // Propagate this specific error
         } else {
             setError(prevError => {
                 const newErrorMessage = `Failed to fetch ${symbol}. ${err.message}`;
+                // Avoid adding duplicate messages for the same symbol
                 return prevError && prevError.includes(`Failed to fetch ${symbol}`) ? prevError : `${prevError ? prevError + '; ' : ''}${newErrorMessage}`;
             });
         }
@@ -164,9 +179,16 @@ export const RealtimeStockProvider: React.FC<RealtimeStockProviderProps> = ({ ch
         await Promise.allSettled(promises);
     } finally {
         setIsLoading(false);
-        // console.log('[StockDataProvider] Finished refreshing data cycle.');
     }
-  }, [apiKey, error]); // stockData and subscribedSymbols are accessed via refs
+  }, [apiKey, error]); // Keep 'error' if it's used to prevent re-fetching on existing API config error
+
+  // Effect to refresh data when subscribed symbols change
+  useEffect(() => {
+    const symbolsArray = Array.from(subscribedSymbolsRef.current); // Use ref here
+    if (isMountedRef.current && symbolsArray.length > 0) {
+      refreshStockData(symbolsArray);
+    }
+  }, [subscribedSymbols, refreshStockData]); // refreshStockData is now more stable
 
   return (
     <RealtimeStockContext.Provider value={{ stockData, subscribedSymbols, subscribeToSymbol, unsubscribeFromSymbol, refreshStockData, isLoading, error }}>
