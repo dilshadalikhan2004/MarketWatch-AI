@@ -1,29 +1,24 @@
 
-import type { Stock, NewsArticle, MarketMover, SentimentDataPoint, PortfolioPosition } from '@/lib/types';
+import type { Stock, NewsArticle, MarketMover, SentimentDataPoint, PortfolioPosition, UserPortfolioPosition } from '@/lib/types';
 import { v4 as uuidv4 } from 'uuid';
 
 const generateDeterministicChartData = (basePrice: number): { month: string; price: number }[] => {
   const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  // Use a simple, predictable pattern for variety or a completely fixed one
   const prices = [
     basePrice * 0.95, basePrice * 0.92, basePrice * 0.90, basePrice * 0.93,
     basePrice * 0.97, basePrice * 1.00, basePrice * 1.02, basePrice * 1.05,
     basePrice * 1.03, basePrice * 1.07, basePrice * 1.10, basePrice * 1.08
   ].map(p => parseFloat(p.toFixed(2)));
-
-  // Ensure we have 12 data points, repeat last if necessary (though above ensures it)
   const finalPrices = Array(12).fill(0).map((_, i) => prices[i] || prices[prices.length -1] || basePrice);
-
   return months.map((month, index) => ({ month, price: finalPrices[index] }));
 };
-
 
 const initialStockDetails = (
   symbol: string,
   name: string,
   basePrice: number,
   dataAiHint: string,
-  fixedChange: number
+  fixedChange: number 
 ) => {
   const previousClose = parseFloat((basePrice - fixedChange).toFixed(2));
   const changePercent = previousClose !== 0 ? parseFloat((fixedChange / previousClose).toFixed(4)) : 0;
@@ -40,13 +35,12 @@ const initialStockDetails = (
     peRatio: parseFloat((20 + (symbol.charCodeAt(0) - 65) * 0.5).toFixed(2)),
     high52Week: parseFloat((basePrice * 1.25).toFixed(2)),
     low52Week: parseFloat((basePrice * 0.85).toFixed(2)),
-    logoUrl: `https://placehold.co/40x40.png`,
+    logoUrl: `https://placehold.co/40x40.png`, 
     dataAiHint,
     chartData: generateDeterministicChartData(basePrice),
     previousClose: previousClose
   };
 };
-
 
 export const mockStocks: Stock[] = [
   initialStockDetails('AAPL', 'Apple Inc.', 170.34, 'apple logo', 3.00),
@@ -59,12 +53,12 @@ export const mockStocks: Stock[] = [
 
 export const getStockBySymbol = (symbol: string): Stock | undefined => {
   const stock = mockStocks.find(stock => stock.symbol === symbol);
-  return stock ? { ...stock } : undefined;
+  return stock ? { ...stock } : undefined; 
 };
 
 const newsHeadlinesTemplates = [
-  "Breaking: Market Hits Record High Amidst Tech Rally",
-  "Analysis: Future of Renewable Energy Stocks Looks Bright",
+  "Market Hits Record High Amidst Tech Rally",
+  "Future of Renewable Energy Stocks Looks Bright",
   "Global Economy Shows Signs of Slowdown, Experts Warn",
   "New Innovations in AI Could Disrupt Major Industries",
   "Understanding the Impact of Inflation on Your Portfolio",
@@ -88,8 +82,8 @@ const newsSummariesTemplates = [
   "Ongoing international conflicts and political instability are creating uncertainty in global energy markets, particularly for oil."
 ];
 
-const newsSources = ["Market Insider", "Global Financial Times", "Eco Trends Magazine", "Industry Watch Daily", "FutureTech AI News"];
-const newsDataAiHints = ["stock chart", "solar panel", "graphs statistics", "artificial intelligence", "money coins"];
+const newsSources = ["Market Insider", "Global Financial Times", "Eco Trends Magazine", "Industry Watch Daily", "FutureTech AI News", "Business Chronicle", "Economy Today"];
+const newsDataAiHints = ["stock chart", "solar panel", "graphs statistics", "artificial intelligence", "money coins", "office building", "currency exchange"];
 
 export const generateMockNews = (count: number = 10): NewsArticle[] => {
   const articles: NewsArticle[] = [];
@@ -99,29 +93,17 @@ export const generateMockNews = (count: number = 10): NewsArticle[] => {
     const articleDate = new Date(today);
     articleDate.setDate(today.getDate() - i); // Dates go backwards from today
 
-    const sentimentOptions: Array<'positive' | 'negative' | 'neutral'> = ['positive', 'negative', 'neutral'];
-    const randomSentiment = sentimentOptions[i % sentimentOptions.length];
-    
-    let score;
-    switch (randomSentiment) {
-      case 'positive': score = 0.65 + (i % 3) * 0.1; break;
-      case 'negative': score = -0.65 - (i % 3) * 0.1; break;
-      case 'neutral': score = 0.0 + ((i % 3) - 1) * 0.05; break;
-      default: score = 0;
-    }
-
     articles.push({
       id: uuidv4(),
-      headline: `${newsHeadlinesTemplates[i % newsHeadlinesTemplates.length]} (Day ${i + 1})`,
-      source: newsSources[i % newsSources.length],
-      date: articleDate.toISOString(),
-      summary: `${newsSummariesTemplates[i % newsSummariesTemplates.length]} This is article ${i + 1}.`,
-      url: '#',
-      imageUrl: `https://placehold.co/600x400.png`,
-      dataAiHint: newsDataAiHints[i % newsDataAiHints.length],
-      sentiment: randomSentiment,
-      sentimentScore: parseFloat(score.toFixed(2)),
-      sentimentReason: `AI analysis suggests this sentiment based on keyword usage and market context for article ${i + 1}.`
+      title: `${newsHeadlinesTemplates[i % newsHeadlinesTemplates.length]} - Day ${i + 1}`,
+      description: `${newsSummariesTemplates[i % newsSummariesTemplates.length]} This is mock article ${i + 1}.`,
+      url: '#', // Placeholder URL
+      urlToImage: `https://placehold.co/600x400.png`,
+      publishedAt: articleDate.toISOString(),
+      source: { name: newsSources[i % newsSources.length] },
+      author: `Author ${i % 5 + 1}`,
+      content: `Full content for mock article ${i + 1}. ${newsSummariesTemplates[i % newsSummariesTemplates.length]}`,
+      dataAiHint: newsDataAiHints[i % newsDataAiHints.length]
     });
   }
   return articles;
@@ -140,15 +122,15 @@ export const mockSentimentData: SentimentDataPoint[] = [
   { name: 'Neutral', value: 30, fill: 'hsl(var(--chart-3))' },  
 ];
 
-export const mockPortfolio: Omit<PortfolioPosition, 'currentPrice' | 'name' | 'logoUrl' | 'dataAiHint'>[] = [
+export const mockPortfolio: Omit<PortfolioPosition, 'currentPrice' | 'name' | 'logoUrl' | 'dataAiHint' | 'marketValue' | 'initialCost' | 'gainLoss' | 'gainLossPercent'>[] = [
   { symbol: 'AAPL', shares: 10, avgPurchasePrice: 150.00 },
   { symbol: 'MSFT', shares: 5, avgPurchasePrice: 400.00 },
   { symbol: 'TSLA', shares: 20, avgPurchasePrice: 160.00 },
   { symbol: 'GOOGL', shares: 15, avgPurchasePrice: 140.00 },
 ];
 
-function formatLargeNumber(num: number): string {
-  if (num === null || num === undefined || isNaN(num)) return 'N/A';
+function formatLargeNumber(num: number | undefined | null): string {
+  if (num === undefined || num === null || isNaN(num)) return 'N/A';
   if (Math.abs(num) < 1_000_000) {
     return num.toLocaleString(undefined, {maximumFractionDigits: 0});
   }
