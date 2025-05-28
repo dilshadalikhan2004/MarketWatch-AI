@@ -2,7 +2,7 @@
 "use client";
 import React from 'react';
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import {
   Sidebar,
   SidebarHeader,
@@ -25,12 +25,10 @@ import {
   LineChart,
   AreaChart,
   Settings,
-  LogOut,
   PanelLeft,
   Briefcase, 
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useToast } from "@/hooks/use-toast";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -42,38 +40,8 @@ const navItems = [
   { href: "/tracker", label: "Live Tracker", icon: LineChart },
 ];
 
-const LOCALSTORAGE_KEYS_TO_CLEAR = [
-  'marketwatch_ai_watchlist_v1',
-  'marketwatch_ai_alerts_v1',
-  'marketwatch_ai_user_portfolio_v1',
-  'marketwatch_username',
-  'marketwatch_email',
-  'marketwatch_market_alerts_enabled',
-  'marketwatch_news_digest_enabled',
-  'theme'
-];
-
 export function AppSidebar() {
   const pathname = usePathname();
-  const router = useRouter();
-  const { toast } = useToast();
-
-  const handleLogout = () => {
-    if (typeof window !== 'undefined') {
-      LOCALSTORAGE_KEYS_TO_CLEAR.forEach(key => {
-        localStorage.removeItem(key);
-      });
-      // Special handling for theme to immediately update UI
-      document.documentElement.classList.remove('dark'); 
-      document.documentElement.classList.add('light'); // Or your default theme
-      localStorage.setItem('theme', 'light'); // Persist default theme choice
-    }
-    toast({
-      title: "Logged Out",
-      description: "You have been successfully logged out.",
-    });
-    router.push('/'); // Redirect to the landing page
-  };
 
   return (
     <Sidebar variant="sidebar" collapsible="icon" className="border-r border-sidebar-border">
@@ -119,17 +87,6 @@ export function AppSidebar() {
                 <span>Settings</span>
               </Link>
             </SidebarMenuButton>
-          </SidebarMenuItem>
-          <SidebarMenuItem>
-            <Button
-              variant="destructive"
-              className="w-full"
-              onClick={handleLogout}
-              aria-label="Logout"
-            >
-              <LogOut />
-              <span>Logout</span>
-            </Button>
           </SidebarMenuItem>
         </SidebarMenu>
         <div className="mt-4 text-center text-xs text-muted-foreground group-data-[collapsible=icon]:hidden">
