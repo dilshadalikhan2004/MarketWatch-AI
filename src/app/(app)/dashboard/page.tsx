@@ -10,7 +10,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AreaChart, BarChart3, Newspaper, TrendingUp, TrendingDown, Zap, ArrowRight, AlertCircle, Wallet, RefreshCw } from 'lucide-react';
 import { MinimalStockCard } from '@/components/common/StockCard';
 import { NewsCard } from '@/components/common/NewsCard';
-import { generateMockNews, mockMarketMovers as initialMarketMovers, mockSentimentData, mockPortfolio as basePortfolio, mockStocks } from '@/lib/mock-data';
+import { generateMockNews, initialMarketMovers, mockSentimentData, mockPortfolio as basePortfolio, mockStocks } from '@/lib/mock-data';
 import type { Stock, NewsArticle, MarketMover, SentimentDataPoint, PortfolioPosition as PortfolioPositionType } from '@/lib/types';
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { Bar, BarChart as RechartsBarChart, CartesianGrid, XAxis, YAxis, Line, LineChart as RechartsLineChart, Cell } from 'recharts';
@@ -45,7 +45,7 @@ export default function DashboardPage() {
       losers: initialMarketMovers.losers.map(l => l.symbol),
       active: initialMarketMovers.active.map(a => a.symbol),
     }, null, 2));
-  }, []); // No dependency on initialMarketMovers needed if it's a stable import
+  }, []);
 
 
   const allDashboardSymbolsToRefresh = useMemo(() => Array.from(new Set([
@@ -54,7 +54,7 @@ export default function DashboardPage() {
     ...initialMarketMovers.gainers.map(m => m.symbol),
     ...initialMarketMovers.losers.map(m => m.symbol),
     ...initialMarketMovers.active.map(m => m.symbol),
-  ].filter(Boolean))), [selectedMarketSymbol]); // initialMarketMovers is stable, so not strictly needed here
+  ].filter(Boolean))), [selectedMarketSymbol]);
 
   useEffect(() => {
     setIsMounted(true);
@@ -77,11 +77,12 @@ export default function DashboardPage() {
           console.log('[DashboardPage] News articles set. Count:', newsResult.articles.length);
         } else {
           console.warn('[DashboardPage] News result had no error and no articles. Setting empty news.');
-          setRecentNews([]); // Ensure it's an empty array if articles is undefined
+          setRecentNews(generateMockNews(3)); // Fallback to mock news
         }
       } catch (e: any) {
         setNewsError("An unexpected error occurred while fetching news.");
         console.error('[DashboardPage] Unexpected News fetch error:', e);
+        setRecentNews(generateMockNews(3)); // Fallback to mock news
       } finally {
         setIsLoadingNews(false);
         console.log('[DashboardPage] Finished fetching news.');
@@ -162,7 +163,7 @@ export default function DashboardPage() {
           return { ...baseMoverInfo, ...rtData, name: baseMoverInfo?.name || rtData.name || mover.symbol, type: mover.type } as MarketMover;
         }
         return { ...baseMoverInfo, ...mover, name: baseMoverInfo?.name || mover.name || mover.symbol } as MarketMover;
-      }).filter(mover => mover.symbol && mover.name); 
+      }).filter(mover => mover.symbol && mover.name);
     };
     const gainers = updateMoverList(initialMarketMovers.gainers).sort((a,b) => (b.changePercent || 0) - (a.changePercent || 0));
     const losers = updateMoverList(initialMarketMovers.losers).sort((a,b) => (a.changePercent || 0) - (b.changePercent || 0));
@@ -196,19 +197,20 @@ export default function DashboardPage() {
         const result = await getNewsArticlesAction('finance market', 3);
         if (result.error) {
           setNewsError(result.error);
-        } else if (result.articles) {
+           setRecentNews(generateMockNews(3)); // Fallback
+        } else if (result.articles && result.articles.length > 0) {
           setRecentNews(result.articles);
         } else {
-          setRecentNews([]);
+          setRecentNews(generateMockNews(3)); // Fallback if no articles
         }
     } catch(e: any) {
         setNewsError("An unexpected error occurred while fetching news.");
+        setRecentNews(generateMockNews(3)); // Fallback
     } finally {
         setIsLoadingNews(false);
     }
   };
 
-  // Log currentMarketMovers and recentNews before rendering
   console.log('[DashboardPage] Rendering. isMounted:', isMounted);
   console.log('[DashboardPage] currentMarketMovers for render:', JSON.stringify({
     gainersSymbols: currentMarketMovers.gainers.map(g => g.symbol),
@@ -462,4 +464,3 @@ export default function DashboardPage() {
     </div>
   );
 }
-
