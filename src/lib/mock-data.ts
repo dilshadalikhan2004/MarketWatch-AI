@@ -4,13 +4,12 @@ import { v4 as uuidv4 } from 'uuid';
 
 const generateDeterministicChartData = (basePrice: number): { month: string; price: number }[] => {
   const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  const prices = [
-    basePrice * 0.95, basePrice * 0.92, basePrice * 0.90, basePrice * 0.93,
-    basePrice * 0.97, basePrice * 1.00, basePrice * 1.02, basePrice * 1.05,
-    basePrice * 1.03, basePrice * 1.07, basePrice * 1.10, basePrice * 1.08
-  ].map(p => parseFloat(p.toFixed(2)));
-  const finalPrices = Array(12).fill(0).map((_, i) => prices[i] || prices[prices.length -1] || basePrice);
-  return months.map((month, index) => ({ month, price: finalPrices[index] }));
+  // Consistent wave-like pattern
+  const fluctuations = [0.95, 0.92, 0.90, 0.93, 0.97, 1.00, 1.02, 1.05, 1.03, 1.07, 1.10, 1.08];
+  return months.map((month, index) => ({
+    month,
+    price: parseFloat((basePrice * fluctuations[index]).toFixed(2)),
+  }));
 };
 
 const initialStockDetails = (
@@ -18,8 +17,8 @@ const initialStockDetails = (
   name: string,
   basePrice: number,
   dataAiHint: string,
-  fixedChange: number 
-) => {
+  fixedChange: number
+): Stock => {
   const previousClose = parseFloat((basePrice - fixedChange).toFixed(2));
   const changePercent = previousClose !== 0 ? parseFloat((fixedChange / previousClose).toFixed(4)) : 0;
 
@@ -35,10 +34,10 @@ const initialStockDetails = (
     peRatio: parseFloat((20 + (symbol.charCodeAt(0) - 65) * 0.5).toFixed(2)),
     high52Week: parseFloat((basePrice * 1.25).toFixed(2)),
     low52Week: parseFloat((basePrice * 0.85).toFixed(2)),
-    logoUrl: `https://placehold.co/40x40.png`, 
+    logoUrl: `https://placehold.co/40x40.png`,
     dataAiHint,
     chartData: generateDeterministicChartData(basePrice),
-    previousClose: previousClose
+    previousClose: previousClose,
   };
 };
 
@@ -50,10 +49,12 @@ export const mockStocks: Stock[] = [
   initialStockDetails('TSLA', 'Tesla, Inc.', 175.79, 'tesla logo', -5.20),
   initialStockDetails('NVDA', 'NVIDIA Corporation', 900.50, 'nvidia logo', 10.55),
 ];
+console.log('[MockData] mockStocks for initialMarketMovers:', JSON.stringify(mockStocks.map(s => ({symbol: s.symbol, change: s.change, name: s.name}))));
+
 
 export const getStockBySymbol = (symbol: string): Stock | undefined => {
   const stock = mockStocks.find(stock => stock.symbol === symbol);
-  return stock ? { ...stock } : undefined; 
+  return stock ? { ...stock } : undefined;
 };
 
 const newsHeadlinesTemplates = [
@@ -91,13 +92,13 @@ export const generateMockNews = (count: number = 10): NewsArticle[] => {
 
   for (let i = 0; i < count; i++) {
     const articleDate = new Date(today);
-    articleDate.setDate(today.getDate() - i); // Dates go backwards from today
+    articleDate.setDate(today.getDate() - i); 
 
     articles.push({
       id: uuidv4(),
-      title: `${newsHeadlinesTemplates[i % newsHeadlinesTemplates.length]} - Day ${i + 1}`,
-      description: `${newsSummariesTemplates[i % newsSummariesTemplates.length]} This is mock article ${i + 1}.`,
-      url: '#', // Placeholder URL
+      title: `${newsHeadlinesTemplates[i % newsHeadlinesTemplates.length]} - Story ${i + 1}`,
+      description: `${newsSummariesTemplates[i % newsSummariesTemplates.length]} This is a summary for mock article ${i + 1}.`,
+      url: '#', 
       urlToImage: `https://placehold.co/600x400.png`,
       publishedAt: articleDate.toISOString(),
       source: { name: newsSources[i % newsSources.length] },
@@ -110,16 +111,22 @@ export const generateMockNews = (count: number = 10): NewsArticle[] => {
 };
 
 
-export const mockMarketMovers: { gainers: MarketMover[], losers: MarketMover[], active: MarketMover[] } = {
-  gainers: mockStocks.filter(s => s.change > 0).slice(0,3).map(s => ({...s, type: 'gainer' as const })).sort((a,b) => b.changePercent - a.changePercent),
-  losers: mockStocks.filter(s => s.change < 0).slice(0,3).map(s => ({...s, type: 'loser' as const })).sort((a,b) => a.changePercent - b.changePercent),
+export const initialMarketMovers: { gainers: MarketMover[], losers: MarketMover[], active: MarketMover[] } = {
+  gainers: mockStocks.filter(s => s.change > 0).slice(0,3).map(s => ({...s, type: 'gainer' as const })).sort((a,b) => (b.changePercent || 0) - (a.changePercent || 0)),
+  losers: mockStocks.filter(s => s.change < 0).slice(0,3).map(s => ({...s, type: 'loser' as const })).sort((a,b) => (a.changePercent || 0) - (b.changePercent || 0)),
   active: [...mockStocks].sort((a,b) => parseFloat(b.volume?.replace(/[^0-9.]/g, '') || '0') - parseFloat(a.volume?.replace(/[^0-9.]/g, '') || '0')).slice(0,3).map(s => ({...s, type: 'active' as const}))
 };
+console.log('[MockData] initialMarketMovers created:', JSON.stringify({
+  gainers: initialMarketMovers.gainers.map(g => g.symbol),
+  losers: initialMarketMovers.losers.map(l => l.symbol),
+  active: initialMarketMovers.active.map(a => a.symbol),
+}, null, 2));
+
 
 export const mockSentimentData: SentimentDataPoint[] = [
-  { name: 'Positive', value: 45, fill: 'hsl(var(--chart-4))' }, 
-  { name: 'Negative', value: 25, fill: 'hsl(var(--chart-5))' }, 
-  { name: 'Neutral', value: 30, fill: 'hsl(var(--chart-3))' },  
+  { name: 'Positive', value: 45, fill: 'hsl(var(--chart-4))' },
+  { name: 'Negative', value: 25, fill: 'hsl(var(--chart-5))' },
+  { name: 'Neutral', value: 30, fill: 'hsl(var(--chart-3))' },
 ];
 
 export const mockPortfolio: Omit<PortfolioPosition, 'currentPrice' | 'name' | 'logoUrl' | 'dataAiHint' | 'marketValue' | 'initialCost' | 'gainLoss' | 'gainLossPercent'>[] = [

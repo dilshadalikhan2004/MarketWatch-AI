@@ -38,6 +38,15 @@ export default function DashboardPage() {
   const marketOverviewStockSymbol = useMemo(() => mockStocks.length > 0 ? mockStocks[0].symbol : 'AAPL', []);
   const selectedMarketSymbol = marketOverviewStockSymbol;
 
+  // Log initialMarketMovers when the component mounts or initialMarketMovers reference changes
+  React.useEffect(() => {
+    console.log('[DashboardPage] Imported initialMarketMovers:', JSON.stringify({
+      gainers: initialMarketMovers.gainers.map(g => g.symbol),
+      losers: initialMarketMovers.losers.map(l => l.symbol),
+      active: initialMarketMovers.active.map(a => a.symbol),
+    }, null, 2));
+  }, []); // No dependency on initialMarketMovers needed if it's a stable import
+
 
   const allDashboardSymbolsToRefresh = useMemo(() => Array.from(new Set([
     selectedMarketSymbol,
@@ -45,42 +54,58 @@ export default function DashboardPage() {
     ...initialMarketMovers.gainers.map(m => m.symbol),
     ...initialMarketMovers.losers.map(m => m.symbol),
     ...initialMarketMovers.active.map(m => m.symbol),
-  ].filter(Boolean))), [selectedMarketSymbol]);
+  ].filter(Boolean))), [selectedMarketSymbol]); // initialMarketMovers is stable, so not strictly needed here
 
   useEffect(() => {
     setIsMounted(true);
-    allDashboardSymbolsToRefresh.forEach(subscribeToSymbol);
+  }, []);
 
+  useEffect(() => {
     const fetchNewsAndInitialStock = async () => {
+      console.log('[DashboardPage] fetchNewsAndInitialStock called');
       setIsLoadingNews(true);
       setNewsError(null);
       try {
+        console.log('[DashboardPage] Fetching news articles...');
         const newsResult = await getNewsArticlesAction('finance market', 3);
+        console.log('[DashboardPage] News result:', newsResult);
         if (newsResult.error) {
           setNewsError(newsResult.error);
+          console.error('[DashboardPage] News fetch error:', newsResult.error);
         } else if (newsResult.articles) {
           setRecentNews(newsResult.articles);
+          console.log('[DashboardPage] News articles set. Count:', newsResult.articles.length);
+        } else {
+          console.warn('[DashboardPage] News result had no error and no articles. Setting empty news.');
+          setRecentNews([]); // Ensure it's an empty array if articles is undefined
         }
       } catch (e: any) {
         setNewsError("An unexpected error occurred while fetching news.");
+        console.error('[DashboardPage] Unexpected News fetch error:', e);
       } finally {
         setIsLoadingNews(false);
+        console.log('[DashboardPage] Finished fetching news.');
       }
 
       if (selectedMarketSymbol) {
+        console.log('[DashboardPage] Refreshing stock data for selected market symbol:', selectedMarketSymbol);
         await refreshStockData([selectedMarketSymbol]); // Only fetch market overview stock initially
       }
     };
 
-    fetchNewsAndInitialStock();
+    if (isMounted) {
+        console.log('[DashboardPage] isMounted true, attempting to fetch initial data and subscribe.');
+        fetchNewsAndInitialStock();
+        allDashboardSymbolsToRefresh.forEach(subscribeToSymbol);
+    }
 
     return () => {
-      allDashboardSymbolsToRefresh.forEach(unsubscribeFromSymbol);
+      if (isMounted) {
+          console.log('[DashboardPage] Cleanup: Unsubscribing from symbols.');
+          allDashboardSymbolsToRefresh.forEach(unsubscribeFromSymbol);
+      }
     };
-  // Only re-run if these stable functions/values change, or on mount.
-  // isMounted is not a dependency because its change doesn't need to re-trigger subscriptions or fetches.
-  // selectedMarketSymbol changing will trigger allDashboardSymbolsToRefresh to change.
-  }, [allDashboardSymbolsToRefresh, subscribeToSymbol, unsubscribeFromSymbol, selectedMarketSymbol, refreshStockData]);
+  }, [isMounted, selectedMarketSymbol, refreshStockData, subscribeToSymbol, unsubscribeFromSymbol, allDashboardSymbolsToRefresh]);
 
 
   const marketOverviewStock = useMemo(() => {
@@ -99,7 +124,6 @@ export default function DashboardPage() {
       const baseStockInfo = mockStocks.find(s => s.symbol === pos.symbol);
       const currentRealtimeData = realtimeStockData[pos.symbol];
 
-      // Use realtime price if available and component is mounted, otherwise fallback
       const currentPrice = (isMounted && currentRealtimeData?.price !== undefined) ? currentRealtimeData.price : (baseStockInfo?.price || pos.avgPurchasePrice);
 
       const initialCost = pos.shares * pos.avgPurchasePrice;
@@ -137,15 +161,12 @@ export default function DashboardPage() {
         if (isMounted && rtData && rtData.price !== undefined) {
           return { ...baseMoverInfo, ...rtData, name: baseMoverInfo?.name || rtData.name || mover.symbol, type: mover.type } as MarketMover;
         }
-        // Fallback to base mover info if no realtime data or not mounted yet
         return { ...baseMoverInfo, ...mover, name: baseMoverInfo?.name || mover.name || mover.symbol } as MarketMover;
-      }).filter(mover => mover.symbol && mover.name); // Ensure basic validity
+      }).filter(mover => mover.symbol && mover.name); 
     };
-    // Apply updateMoverList to each category
     const gainers = updateMoverList(initialMarketMovers.gainers).sort((a,b) => (b.changePercent || 0) - (a.changePercent || 0));
     const losers = updateMoverList(initialMarketMovers.losers).sort((a,b) => (a.changePercent || 0) - (b.changePercent || 0));
     const active = updateMoverList(initialMarketMovers.active).sort((a,b) => {
-        // Prioritize realtime dailyVolume if available
         const volumeA = realtimeStockData[a.symbol]?.dailyVolume ?? parseFloat(a.volume?.replace(/[^0-9.]/g, '') || '0');
         const volumeB = realtimeStockData[b.symbol]?.dailyVolume ?? parseFloat(b.volume?.replace(/[^0-9.]/g, '') || '0');
         return volumeB - volumeA;
@@ -165,6 +186,7 @@ export default function DashboardPage() {
   };
 
   const handleRefreshAllDashboardData = async () => {
+    console.log('[DashboardPage] handleRefreshAllDashboardData called.');
     if (allDashboardSymbolsToRefresh.length > 0) {
         await refreshStockData(allDashboardSymbolsToRefresh);
     }
@@ -176,6 +198,8 @@ export default function DashboardPage() {
           setNewsError(result.error);
         } else if (result.articles) {
           setRecentNews(result.articles);
+        } else {
+          setRecentNews([]);
         }
     } catch(e: any) {
         setNewsError("An unexpected error occurred while fetching news.");
@@ -183,6 +207,17 @@ export default function DashboardPage() {
         setIsLoadingNews(false);
     }
   };
+
+  // Log currentMarketMovers and recentNews before rendering
+  console.log('[DashboardPage] Rendering. isMounted:', isMounted);
+  console.log('[DashboardPage] currentMarketMovers for render:', JSON.stringify({
+    gainersSymbols: currentMarketMovers.gainers.map(g => g.symbol),
+    losersSymbols: currentMarketMovers.losers.map(l => l.symbol),
+    activeSymbols: currentMarketMovers.active.map(a => a.symbol),
+    gainersLength: currentMarketMovers.gainers.length,
+  }, null, 2));
+  console.log('[DashboardPage] isLoadingNews:', isLoadingNews, 'newsError:', newsError, 'recentNews length:', recentNews.length);
+
 
   if (!isMounted && isLoadingRealtime && !marketOverviewStock) {
     return (
@@ -202,7 +237,7 @@ export default function DashboardPage() {
     <div className="flex w-full flex-col gap-6">
       <PageHeader
         title="Dashboard Overview"
-        description="Market insights at a glance. Stock data from Alpha Vantage, News from NewsAPI.org."
+        description="Market insights at a glance. Stock data from FMP, News from NewsAPI.org."
         icon={AreaChart}
         actions={
           <Button onClick={handleRefreshAllDashboardData} disabled={isLoadingRealtime || isLoadingNews} variant="outline">
@@ -273,14 +308,14 @@ export default function DashboardPage() {
           <Card className="shadow-lg">
             <CardHeader>
               <CardTitle className="flex items-center gap-2"><Wallet className="h-5 w-5 text-primary" />Portfolio Snapshot</CardTitle>
-              <CardDescription>A sample overview of your investment performance. Click "Refresh Data" for latest Alpha Vantage prices (API limits apply).</CardDescription>
+              <CardDescription>A sample overview of your investment performance. Click "Refresh Data" for latest FMP prices (API limits apply).</CardDescription>
             </CardHeader>
             <CardContent>
               <Alert variant="default" className="mb-4 bg-blue-50 border-blue-200 dark:bg-blue-900/30 dark:border-blue-700">
                 <AlertCircle className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                 <AlertTitle className="text-blue-700 dark:text-blue-300 font-semibold">Sample Data & API Limits</AlertTitle>
                 <AlertDescription className="text-blue-600 dark:text-blue-400">
-                  This portfolio uses sample positions. Prices update from Alpha Vantage when "Refresh Data" is clicked, subject to API limits. Mock data is used as a fallback.
+                  This portfolio uses sample positions. Prices update from FinancialModelingPrep (FMP) when "Refresh Data" is clicked, subject to API limits. Mock data is used as a fallback.
                 </AlertDescription>
               </Alert>
               {isMounted && portfolioData.length > 0 ? (
@@ -427,3 +462,4 @@ export default function DashboardPage() {
     </div>
   );
 }
+
