@@ -2,7 +2,7 @@
 "use client";
 import React from 'react';
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation"; // Added useRouter
+import { usePathname, useRouter } from "next/navigation";
 import {
   Sidebar,
   SidebarHeader,
@@ -12,7 +12,6 @@ import {
   SidebarMenuItem,
   SidebarMenuButton,
   SidebarTrigger,
-  SidebarInset,
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -27,15 +26,13 @@ import {
   Settings,
   PanelLeft,
   Briefcase,
-  LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 
 const mainNavItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  // TEMPORARY DIAGNOSTIC: Watchlist link now points to /dashboard
-  { href: "/dashboard", label: "Watchlist (Test->Dash)", icon: ListChecks },
+  { href: "/watchlist", label: "Watchlist", icon: ListChecks },
   { href: "/portfolio", label: "My Portfolio", icon: Briefcase },
   { href: "/alerts", label: "Alerts", icon: BellRing },
   { href: "/sentiment", label: "Sentiment Analysis", icon: Sparkles },
@@ -73,9 +70,12 @@ export function AppSidebar() {
   };
 
   const isNavItemActive = (itemHref: string) => {
+    // For dashboard, only active if it's exactly /dashboard
     if (itemHref === "/dashboard") {
       return pathname === itemHref;
     }
+    // For other items, active if pathname starts with itemHref
+    // (e.g., /portfolio/add would still highlight /portfolio)
     return pathname.startsWith(itemHref);
   };
 
@@ -99,7 +99,7 @@ export function AppSidebar() {
       <SidebarContent className="flex-grow">
         <SidebarMenu>
           {mainNavItems.map((item) => (
-            <SidebarMenuItem key={item.label}> {/* Changed key to item.label for the test to avoid conflict if hrefs are same */}
+            <SidebarMenuItem key={item.href}> {}
               <SidebarMenuButton
                 asChild
                 isActive={isNavItemActive(item.href)}
@@ -120,8 +120,8 @@ export function AppSidebar() {
           <SidebarMenuItem>
             <SidebarMenuButton
               asChild
-              tooltip={settingsNavItem.label}
               isActive={isNavItemActive(settingsNavItem.href)}
+              tooltip={settingsNavItem.label}
             >
               <Link href={settingsNavItem.href}>
                 <settingsNavItem.icon />
@@ -129,6 +129,7 @@ export function AppSidebar() {
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
+          {/* Logout button is currently removed as per earlier request
           <SidebarMenuItem>
             <Button
               variant="destructive"
@@ -141,6 +142,7 @@ export function AppSidebar() {
               <span className="group-data-[collapsible=icon]:hidden">Logout</span>
             </Button>
           </SidebarMenuItem>
+          */}
         </SidebarMenu>
         <div className="mt-4 text-center text-xs text-muted-foreground group-data-[collapsible=icon]:hidden">
           © {new Date().getFullYear()} MarketWatch AI
