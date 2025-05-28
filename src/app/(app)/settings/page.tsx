@@ -8,22 +8,25 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { User, BellRing, Save } from 'lucide-react';
+import { User, BellRing, Save, Moon, Sun } from 'lucide-react'; // Added Moon and Sun
 import { useToast } from "@/hooks/use-toast";
 
 const USERNAME_KEY = 'marketwatch_username';
 const EMAIL_KEY = 'marketwatch_email';
 const MARKET_ALERTS_KEY = 'marketwatch_market_alerts_enabled';
 const NEWS_DIGEST_KEY = 'marketwatch_news_digest_enabled';
+const THEME_KEY = 'marketwatch_theme';
 
 const SettingsPage: React.FC = () => {
   const { toast } = useToast();
-  const [username, setUsername] = useState('');
-  const [email, setEmail] = useState('');
   const [isMounted, setIsMounted] = useState(false);
 
+  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
+  
   const [marketAlertsEnabled, setMarketAlertsEnabled] = useState(false);
-  const [newsDigestEnabled, setNewsDigestEnabled] = useState(true); // Default to true
+  const [newsDigestEnabled, setNewsDigestEnabled] = useState(true);
+  const [isDarkModeActive, setIsDarkModeActive] = useState(false);
 
   useEffect(() => {
     setIsMounted(true);
@@ -32,15 +35,25 @@ const SettingsPage: React.FC = () => {
     const savedEmail = localStorage.getItem(EMAIL_KEY);
     const savedMarketAlerts = localStorage.getItem(MARKET_ALERTS_KEY);
     const savedNewsDigest = localStorage.getItem(NEWS_DIGEST_KEY);
+    const savedTheme = localStorage.getItem(THEME_KEY);
 
     if (savedUsername) setUsername(savedUsername);
-    else setUsername('current_username'); // Default
+    else setUsername('current_username'); 
 
     if (savedEmail) setEmail(savedEmail);
-    else setEmail('current_email@example.com'); // Default
+    else setEmail('current_email@example.com'); 
     
     if (savedMarketAlerts) setMarketAlertsEnabled(JSON.parse(savedMarketAlerts));
     if (savedNewsDigest) setNewsDigestEnabled(JSON.parse(savedNewsDigest));
+    else setNewsDigestEnabled(true); // Default to true if not found
+
+    if (savedTheme === 'dark') {
+      document.documentElement.classList.add('dark');
+      setIsDarkModeActive(true);
+    } else {
+      document.documentElement.classList.remove('dark');
+      setIsDarkModeActive(false);
+    }
   }, []);
 
   const handleUsernameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -82,13 +95,14 @@ const SettingsPage: React.FC = () => {
   };
 
   const handleDarkModeChange = (checked: boolean) => {
-    // Persist dark mode preference
+    if (!isMounted) return;
+    setIsDarkModeActive(checked);
     if (checked) {
       document.documentElement.classList.add('dark');
-      localStorage.setItem('theme', 'dark');
+      localStorage.setItem(THEME_KEY, 'dark');
     } else {
       document.documentElement.classList.remove('dark');
-      localStorage.setItem('theme', 'light');
+      localStorage.setItem(THEME_KEY, 'light');
     }
      toast({
       title: "Appearance Updated",
@@ -96,21 +110,8 @@ const SettingsPage: React.FC = () => {
     });
   };
   
-  // Load theme preference on initial mount
-  useEffect(() => {
-    const savedTheme = localStorage.getItem('theme');
-    if (savedTheme === 'dark') {
-      document.documentElement.classList.add('dark');
-      // No need to set state for dark mode as it's managed by class directly on HTML
-      // and switch would read this preference via useEffect if we stored it in state
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-  }, []);
-
-
   if (!isMounted) {
-    // Optional: Render a loading state or null until settings are loaded from localStorage
+    // Render a skeleton or null until settings are loaded from localStorage to avoid hydration issues
     return null; 
   }
 
@@ -201,7 +202,7 @@ const SettingsPage: React.FC = () => {
         <Card className="shadow-lg">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-primary"><path d="M12 2.2c-5.523 0-10 4.477-10 10s4.477 10 10 10 10-4.477 10-10S17.523 2.2 12 2.2zm0 18.286V3.514c4.683 0 8.486 3.803 8.486 8.486s-3.803 8.486-8.486 8.486z"/></svg>
+              {isDarkModeActive ? <Moon className="h-5 w-5 text-primary" /> : <Sun className="h-5 w-5 text-primary" />}
               Appearance
             </CardTitle>
             <CardDescription>Customize the look and feel of the application.</CardDescription>
@@ -213,7 +214,7 @@ const SettingsPage: React.FC = () => {
               </Label>
               <Switch
                 id="darkMode"
-                checked={typeof window !== 'undefined' ? document.documentElement.classList.contains('dark') : false}
+                checked={isDarkModeActive}
                 onCheckedChange={handleDarkModeChange}
                 aria-label="Toggle dark mode"
               />
@@ -230,5 +231,3 @@ const SettingsPage: React.FC = () => {
 };
 
 export default SettingsPage;
-
-    
