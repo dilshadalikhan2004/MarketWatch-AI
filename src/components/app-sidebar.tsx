@@ -72,7 +72,7 @@ export function AppSidebar() {
       title: "Logged Out",
       description: "You have been successfully logged out.",
     });
-    router.push('/dashboard'); // Redirect to dashboard or a login page if you had one
+    router.push('/'); // Redirect to the landing page
   };
 
   return (
@@ -113,8 +113,7 @@ export function AppSidebar() {
       <SidebarFooter className="p-3">
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton asChild tooltip="Settings">
-              {/* Removed custom className from Link to rely on SidebarMenuButton for styling */}
+            <SidebarMenuButton asChild tooltip="Settings" isActive={pathname === "/settings"}>
               <Link href="/settings">
                 <Settings />
                 <span>Settings</span>
@@ -122,7 +121,6 @@ export function AppSidebar() {
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
-            {/* This is already a Button component */}
             <Button
               variant="destructive"
               className="w-full"
