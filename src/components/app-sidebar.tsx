@@ -66,6 +66,7 @@ export function AppSidebar() {
       // Special handling for theme to immediately update UI
       document.documentElement.classList.remove('dark'); 
       document.documentElement.classList.add('light'); // Or your default theme
+      localStorage.setItem('theme', 'light'); // Persist default theme choice
     }
     toast({
       title: "Logged Out",
@@ -113,16 +114,15 @@ export function AppSidebar() {
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton asChild tooltip="Settings">
-              <Link href="/settings" className={cn(
-                "w-full inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 h-9 px-4 py-2",
-                "bg-secondary text-secondary-foreground shadow-sm hover:bg-secondary/80"
-              )}>
+              {/* Removed custom className from Link to rely on SidebarMenuButton for styling */}
+              <Link href="/settings">
                 <Settings />
                 <span>Settings</span>
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
+            {/* This is already a Button component */}
             <Button
               variant="destructive"
               className="w-full"
