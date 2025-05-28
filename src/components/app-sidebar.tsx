@@ -12,7 +12,7 @@ import {
   SidebarMenuItem,
   SidebarMenuButton,
   SidebarTrigger,
-  // SidebarInset is typically used in the layout file, not directly here
+  SidebarInset, 
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -27,14 +27,14 @@ import {
   Settings,
   LogOut,
   PanelLeft,
-  Briefcase, // New icon for Portfolio
+  Briefcase, 
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/watchlist", label: "Watchlist", icon: ListChecks },
-  { href: "/portfolio", label: "My Portfolio", icon: Briefcase }, // New Portfolio Link
+  { href: "/portfolio", label: "My Portfolio", icon: Briefcase }, 
   { href: "/alerts", label: "Alerts", icon: BellRing },
   { href: "/sentiment", label: "Sentiment Analysis", icon: Sparkles },
   { href: "/assistant", label: "AI Assistant", icon: Bot },
@@ -83,7 +83,7 @@ export function AppSidebar() {
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton asChild tooltip="Settings">
-              <Link href="#">
+              <Link href="/settings" className="w-full inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 bg-secondary text-secondary-foreground shadow-sm hover:bg-secondary/80 h-9 px-4 py-2">
                 <Settings />
                 <span>Settings</span>
               </Link>
@@ -91,7 +91,7 @@ export function AppSidebar() {
           </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton asChild tooltip="Logout">
-              <Link href="#">
+              <Link href="#" className="w-full inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 bg-destructive text-destructive-foreground shadow hover:bg-destructive/90 h-9 px-4 py-2">
                 <LogOut />
                 <span>Logout</span>
               </Link>
@@ -106,23 +106,4 @@ export function AppSidebar() {
   );
 }
 
-// Ensure SidebarInset is correctly exported or handled in the layout.
-// It's usually part of the ui/sidebar.tsx and then re-exported or used directly in layout.
-// For this component, we don't directly export SidebarInset.
-// It's typically used like this:
-// import { SidebarInset } from '@/components/ui/sidebar';
-// Or if app-sidebar.tsx exports it (less common pattern for ui/sidebar.tsx):
-// export { SidebarInset } from '@/components/ui/sidebar';
-// This file is already structured to be the sidebar itself.
-// Re-exporting SidebarInset from here is only needed if src/app/(app)/layout.tsx specifically imports it from app-sidebar.tsx.
-// Let's assume it's imported from "@/components/ui/sidebar" in the layout.
-
-// If SidebarInset is indeed part of your custom ui/sidebar.tsx and exported from there,
-// then it's fine. If it's supposed to be a specific component defined elsewhere,
-// make sure the imports align.
-
-// Based on the error log and files provided, SidebarInset is part of ui/sidebar.tsx.
-// The AppLayout in `src/app/(app)/layout.tsx` does:
-// import { AppSidebar, SidebarInset } from '@/components/app-sidebar';
-// This means app-sidebar.tsx *must* export SidebarInset.
-export { SidebarInset } from "@/components/ui/sidebar"; // Add this re-export
+export { SidebarInset } from "@/components/ui/sidebar";
