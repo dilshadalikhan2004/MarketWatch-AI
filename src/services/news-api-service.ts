@@ -6,47 +6,48 @@
 import type { NewsArticle } from '@/lib/types';
 import { generateMockNews } from '@/lib/mock-data'; 
 
-const NEWS_API_KEY = process.env.NEWS_API_KEY;
+const NEWS_API_KEY_FROM_ENV = process.env.NEWS_API_KEY;
 
 export async function fetchRealNewsArticles(query: string = 'finance OR market OR business OR economy', pageSize: number = 6): Promise<NewsArticle[]> {
-  console.log('[NewsService] Attempting to fetch real news. API Key available:', !!NEWS_API_KEY && NEWS_API_KEY !== "YOUR_NEWS_API_KEY_HERE");
+  // console.log('[NewsService] fetchRealNewsArticles called.');
+  // console.log('[NewsService] Raw NEWS_API_KEY_FROM_ENV value:', NEWS_API_KEY_FROM_ENV);
   
-  if (!NEWS_API_KEY || NEWS_API_KEY === "YOUR_NEWS_API_KEY_HERE") {
+  const isApiKeyAvailableAndNotPlaceholder = NEWS_API_KEY_FROM_ENV && NEWS_API_KEY_FROM_ENV !== "YOUR_NEWS_API_KEY_HERE";
+  // console.log('[NewsService] API Key check: isApiKeyAvailableAndNotPlaceholder =', isApiKeyAvailableAndNotPlaceholder);
+
+
+  if (!isApiKeyAvailableAndNotPlaceholder) {
     console.warn("[NewsService] News API key is not configured or is a placeholder. Returning mock news data.");
     return generateMockNews(pageSize);
   }
 
-  // --- START: NewsAPI.org Implementation ---
-  const newsApiUrl = `https://newsapi.org/v2/everything?q=${encodeURIComponent(query)}&pageSize=${pageSize}&apiKey=${NEWS_API_KEY}&language=en&sortBy=publishedAt`;
+  const newsApiUrl = `https://newsapi.org/v2/everything?q=${encodeURIComponent(query)}&pageSize=${pageSize}&apiKey=${NEWS_API_KEY_FROM_ENV}&language=en&sortBy=publishedAt`;
   
-  console.log(`[NewsService] Fetching real news from: ${newsApiUrl.replace(NEWS_API_KEY, "YOUR_API_KEY_REDACTED")}`);
+  // console.log(`[NewsService] Fetching real news from: ${newsApiUrl.replace(NEWS_API_KEY_FROM_ENV, "YOUR_API_KEY_REDACTED")}`);
 
   try {
     const response = await fetch(newsApiUrl, {
-      // NewsAPI.org uses API key in the URL, but some APIs might require it in headers:
-      // headers: { 'X-Api-Key': NEWS_API_KEY }, 
       cache: 'no-store' 
     });
 
-    console.log(`[NewsService] Response status: ${response.status}`);
+    // console.log(`[NewsService] Response status: ${response.status}`);
 
     if (!response.ok) {
       let errorData;
       try {
         errorData = await response.json();
-        console.error("[NewsService] News API request failed with status:", response.status, "Error data:", errorData);
+        console.warn("[NewsService] News API request failed with status:", response.status, "Error data:", errorData);
       } catch (e) {
         const textError = await response.text();
-        console.error("[NewsService] News API request failed with status:", response.status, "Could not parse error JSON. Response text:", textError);
+        console.warn("[NewsService] News API request failed with status:", response.status, "Could not parse error JSON. Response text:", textError);
         errorData = { message: `News API request failed with status ${response.status}. Response: ${textError}` };
       }
-      // Fallback to mock data in case of API error
       console.warn("[NewsService] News API call failed. Returning mock news data as fallback. Error:", errorData?.message || 'Unknown API error');
       return generateMockNews(pageSize);
     }
 
     const data = await response.json();
-    console.log("[NewsService] Successfully fetched data:", data);
+    // console.log("[NewsService] Successfully fetched data:", data);
     
     if (!data.articles || data.articles.length === 0) {
         console.warn("[NewsService] News API returned no articles for the query. Returning mock news.");
@@ -68,7 +69,6 @@ export async function fetchRealNewsArticles(query: string = 'finance OR market O
       content: article.content,
       dataAiHint: 'news article image', 
     }));
-  // --- END: NewsAPI.org Implementation ---
 
   } catch (error: any) {
     console.error("[NewsService] Error fetching real news articles:", error.message);

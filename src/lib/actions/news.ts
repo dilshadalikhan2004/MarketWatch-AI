@@ -10,10 +10,10 @@ export async function getNewsArticlesAction(
   query: string = 'finance market',
   pageSize: number = 6
 ): Promise<{ articles?: NewsArticle[]; error?: string }> {
-  console.log('[NewsAction] getNewsArticlesAction called with query:', query, 'pageSize:', pageSize);
+  // console.log('[NewsAction] getNewsArticlesAction called with query:', query, 'pageSize:', pageSize);
   try {
     const articles = await fetchRealNewsArticles(query, pageSize);
-    console.log('[NewsAction] Fetched articles successfully:', articles?.length);
+    // console.log('[NewsAction] Fetched articles successfully:', articles?.length);
     return { articles };
   } catch (error: any) {
     console.error("[NewsAction] Error in getNewsArticlesAction:", error);

@@ -10,7 +10,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AreaChart, BarChart3, Newspaper, TrendingUp, TrendingDown, Zap, ArrowRight, AlertCircle, Wallet, RefreshCw } from 'lucide-react';
 import { MinimalStockCard } from '@/components/common/StockCard';
 import { NewsCard } from '@/components/common/NewsCard';
-import { mockMarketMovers as initialMarketMovers, mockSentimentData, mockPortfolio as basePortfolio, mockStocks } from '@/lib/mock-data';
+import { generateMockNews, mockMarketMovers as initialMarketMovers, mockSentimentData, mockPortfolio as basePortfolio, mockStocks } from '@/lib/mock-data';
 import type { Stock, NewsArticle, MarketMover, SentimentDataPoint, PortfolioPosition as PortfolioPositionType } from '@/lib/types';
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { Bar, BarChart as RechartsBarChart, CartesianGrid, XAxis, YAxis, Line, LineChart as RechartsLineChart, Cell } from 'recharts';
@@ -35,7 +35,7 @@ export default function DashboardPage() {
   const [isLoadingNews, setIsLoadingNews] = useState(true);
   const [newsError, setNewsError] = useState<string | null>(null);
 
-  const marketOverviewStockSymbol = useMemo(() => mockStocks.length > 0 ? mockStocks[0].symbol : 'AAPL', []); 
+  const marketOverviewStockSymbol = useMemo(() => mockStocks.length > 0 ? mockStocks[0].symbol : 'AAPL', []);
   const selectedMarketSymbol = marketOverviewStockSymbol;
 
 
@@ -49,40 +49,41 @@ export default function DashboardPage() {
 
   useEffect(() => {
     setIsMounted(true);
+    // Subscribe to necessary symbols
     allDashboardSymbolsToRefresh.forEach(subscribeToSymbol);
 
-    const fetchNews = async () => {
-      console.log('[DashboardPage] useEffect: Attempting to fetch news...');
+    const fetchNewsAndInitialStock = async () => {
+      // console.log('[DashboardPage] useEffect: Attempting to fetch news and initial stock...');
       setIsLoadingNews(true);
       setNewsError(null);
       try {
-        const result = await getNewsArticlesAction('finance market', 3); 
-        console.log('[DashboardPage] useEffect: News fetch result:', result);
-        if (result.error) {
-          setNewsError(result.error);
-          console.error("[DashboardPage] Error fetching news:", result.error);
-        } else if (result.articles) {
-          setRecentNews(result.articles);
+        const newsResult = await getNewsArticlesAction('finance market', 3);
+        // console.log('[DashboardPage] useEffect: News fetch result:', newsResult);
+        if (newsResult.error) {
+          setNewsError(newsResult.error);
+        } else if (newsResult.articles) {
+          setRecentNews(newsResult.articles);
         }
-      } catch (e) {
+      } catch (e: any) {
         console.error("[DashboardPage] Exception during news fetch:", e);
         setNewsError("An unexpected error occurred while fetching news.");
       } finally {
         setIsLoadingNews(false);
       }
+
+      if (selectedMarketSymbol) {
+        // console.log('[DashboardPage] Initial auto-fetch for market overview stock:', selectedMarketSymbol);
+        await refreshStockData([selectedMarketSymbol]);
+      }
     };
-    fetchNews();
-    
-    if (selectedMarketSymbol) {
-        console.log('[DashboardPage] Initial auto-fetch for market overview stock:', selectedMarketSymbol);
-        refreshStockData([selectedMarketSymbol]); 
-    }
+
+    fetchNewsAndInitialStock();
 
     return () => {
       allDashboardSymbolsToRefresh.forEach(unsubscribeFromSymbol);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isMounted, marketOverviewStockSymbol]); // Simplified dependencies for initial load
+  }, [isMounted, marketOverviewStockSymbol]); // Keep refreshStockData, sub/unsub out of deps if they are stable
 
 
   const marketOverviewStock = useMemo(() => {
@@ -94,15 +95,15 @@ export default function DashboardPage() {
     }
     return baseStock || { symbol: selectedMarketSymbol, name: selectedMarketSymbol, price: 0, change:0, changePercent:0, chartData: [] } as Stock;
   }, [selectedMarketSymbol, realtimeStockData, isMounted]);
-  
+
 
   const portfolioData: PortfolioPositionType[] = useMemo(() => {
     return basePortfolio.map(pos => {
       const baseStockInfo = mockStocks.find(s => s.symbol === pos.symbol);
       const currentRealtimeData = realtimeStockData[pos.symbol];
-      
+
       const currentPrice = (isMounted && currentRealtimeData?.price !== undefined) ? currentRealtimeData.price : (baseStockInfo?.price || pos.avgPurchasePrice);
-      
+
       const initialCost = pos.shares * pos.avgPurchasePrice;
       const marketValue = pos.shares * currentPrice;
       const gainLoss = marketValue - initialCost;
@@ -129,7 +130,7 @@ export default function DashboardPage() {
     const totalGainLossPercent = totalInitialCost !== 0 ? (totalGainLoss / totalInitialCost) : 0;
     return { marketValue: totalMarketValue, initialCost: totalInitialCost, gainLoss: totalGainLoss, gainLossPercent: totalGainLossPercent };
   }, [portfolioData]);
-  
+
   const currentMarketMovers = useMemo(() => {
     const updateMoverList = (list: MarketMover[]): MarketMover[] => {
       return list.map(mover => {
@@ -138,8 +139,8 @@ export default function DashboardPage() {
         if (isMounted && rtData && rtData.price !== undefined) {
           return { ...baseMoverInfo, ...rtData, name: baseMoverInfo?.name || rtData.name || mover.symbol, type: mover.type } as MarketMover;
         }
-        return { ...baseMoverInfo, ...mover, name: baseMoverInfo?.name || mover.name || mover.symbol } as MarketMover; 
-      }).filter(mover => mover.symbol && mover.name); 
+        return { ...baseMoverInfo, ...mover, name: baseMoverInfo?.name || mover.name || mover.symbol } as MarketMover;
+      }).filter(mover => mover.symbol && mover.name);
     };
     const gainers = updateMoverList(initialMarketMovers.gainers).sort((a,b) => (b.changePercent || 0) - (a.changePercent || 0));
     const losers = updateMoverList(initialMarketMovers.losers).sort((a,b) => (a.changePercent || 0) - (b.changePercent || 0));
@@ -155,41 +156,38 @@ export default function DashboardPage() {
   const renderMarketMoverCard = (mover: MarketMover) => {
     const baseStock = mockStocks.find(s => s.symbol === mover.symbol) || mover;
     const rtData = realtimeStockData[mover.symbol];
-    const displayData = (isMounted && rtData && rtData.price !== undefined) 
-      ? { ...baseStock, ...rtData, name: baseStock.name || rtData.name || mover.symbol, type: mover.type } 
+    const displayData = (isMounted && rtData && rtData.price !== undefined)
+      ? { ...baseStock, ...rtData, name: baseStock.name || rtData.name || mover.symbol, type: mover.type }
       : { ...baseStock, name: baseStock.name || mover.name || mover.symbol, type: mover.type };
-      
+
     return <MinimalStockCard key={mover.symbol} stock={displayData as Stock} className="w-full" />;
   };
 
-  const handleRefreshAllDashboardData = () => {
+  const handleRefreshAllDashboardData = async () => {
     if (allDashboardSymbolsToRefresh.length > 0) {
-        console.log('[DashboardPage] Manual refresh triggered for symbols:', allDashboardSymbolsToRefresh);
-        refreshStockData(allDashboardSymbolsToRefresh);
+        // console.log('[DashboardPage] Manual refresh triggered for symbols:', allDashboardSymbolsToRefresh);
+        await refreshStockData(allDashboardSymbolsToRefresh);
     }
     // Re-fetch news on manual refresh too
-    const fetchNews = async () => {
-        console.log('[DashboardPage] Manual Refresh: Attempting to fetch news...');
-        setIsLoadingNews(true);
-        setNewsError(null);
-        try {
-            const result = await getNewsArticlesAction('finance market', 3);
-            console.log('[DashboardPage] Manual Refresh: News fetch result:', result);
-            if (result.error) {
-            setNewsError(result.error);
-            } else if (result.articles) {
-            setRecentNews(result.articles);
-            }
-        } catch(e) {
-            console.error("[DashboardPage] Manual Refresh: Exception during news fetch:", e);
-            setNewsError("An unexpected error occurred while fetching news.");
-        } finally {
-            setIsLoadingNews(false);
+    // console.log('[DashboardPage] Manual Refresh: Attempting to fetch news...');
+    setIsLoadingNews(true);
+    setNewsError(null);
+    try {
+        const result = await getNewsArticlesAction('finance market', 3);
+        // console.log('[DashboardPage] Manual Refresh: News fetch result:', result);
+        if (result.error) {
+          setNewsError(result.error);
+        } else if (result.articles) {
+          setRecentNews(result.articles);
         }
-    };
-    fetchNews();
+    } catch(e: any) {
+        console.error("[DashboardPage] Manual Refresh: Exception during news fetch:", e);
+        setNewsError("An unexpected error occurred while fetching news.");
+    } finally {
+        setIsLoadingNews(false);
+    }
   };
-  
+
   if (!isMounted && isLoadingRealtime && !marketOverviewStock) {
     return (
         <div className="flex h-screen w-full items-center justify-center">
@@ -203,7 +201,7 @@ export default function DashboardPage() {
         </div>
     );
   }
-  
+
   return (
     <div className="flex w-full flex-col gap-6">
       <PageHeader
@@ -245,7 +243,7 @@ export default function DashboardPage() {
                       {' '} ({marketOverviewStock.change >= 0 ? '+' : ''}{formatCurrency(marketOverviewStock.change)} / {formatPercentage(marketOverviewStock.changePercent, 2)})
                     </span>
                   ) : (
-                    <span className="ml-1">(Mock data or loading...)</span> 
+                    <span className="ml-1">(Mock data or loading...)</span>
                   )}
                    {isLoadingRealtime && marketOverviewStock.symbol === selectedMarketSymbol && <span className="ml-2 text-xs">(Updating...)</span>}
                 </CardDescription>
@@ -257,10 +255,10 @@ export default function DashboardPage() {
                   <RechartsLineChart data={marketOverviewStock.chartData} margin={{ top: 5, right: 20, left: -20, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} />
                     <XAxis dataKey="month" tickLine={false} axisLine={false} tickMargin={8} />
-                    <YAxis 
-                      tickLine={false} 
-                      axisLine={false} 
-                      tickMargin={8} 
+                    <YAxis
+                      tickLine={false}
+                      axisLine={false}
+                      tickMargin={8}
                       tickFormatter={(value) => `$${value.toFixed(0)}`}
                       domain={['dataMin - 5', 'dataMax + 5']}
                     />
@@ -409,7 +407,7 @@ export default function DashboardPage() {
           </Card>
         </div>
       </div>
-      
+
       {/* Recent News Section */}
       <Card className="shadow-lg w-full">
         <CardHeader>

@@ -3,15 +3,11 @@
 import type { Stock, RealtimeStockData } from '@/lib/types';
 import { mockStocks as baseMockStocks } from '@/lib/mock-data';
 
-// Function to fetch initial static details (name, logo, chartData) if needed,
-// as GLOBAL_QUOTE might not provide all of these.
 export async function fetchInitialStockDetails(symbol: string): Promise<Partial<Stock> | null> {
-  console.log(`[StockApiService] fetchInitialStockDetails called for ${symbol}`);
-  // In a real app, this might be another API call or from a database.
-  // For now, we'll use our base mock data.
+  // console.log(`[StockApiService] fetchInitialStockDetails called for ${symbol}`);
   const baseStock = baseMockStocks.find(s => s.symbol === symbol);
   if (!baseStock) {
-    console.warn(`[StockApiService] No base mock stock found for ${symbol} in fetchInitialStockDetails.`);
+    // console.warn(`[StockApiService] No base mock stock found for ${symbol} in fetchInitialStockDetails.`);
     return null;
   }
   return {
@@ -19,13 +15,13 @@ export async function fetchInitialStockDetails(symbol: string): Promise<Partial<
     name: baseStock.name,
     logoUrl: baseStock.logoUrl,
     dataAiHint: baseStock.dataAiHint,
-    chartData: baseStock.chartData, // Keep mock chart data for now
+    chartData: baseStock.chartData,
     peRatio: baseStock.peRatio,
     high52Week: baseStock.high52Week,
     low52Week: baseStock.low52Week,
     marketCap: baseStock.marketCap,
     avgVolume: baseStock.avgVolume,
-    previousClose: baseStock.previousClose, // Important for initial change calculation
+    previousClose: baseStock.previousClose,
   };
 }
 
@@ -36,8 +32,7 @@ export async function fetchAlphaVantageQuote(symbol: string, apiKey: string): Pr
 
   if (!effectiveApiKey || effectiveApiKey === "YOUR_API_KEY_HERE" || effectiveApiKey === "OM1ZC4CCCCKIGT8O_REPLACE_WITH_YOUR_KEY" ) {
     const msg = `Alpha Vantage API key is not configured properly or is a placeholder. Mock data will be used if available for ${symbol}. Key: ${effectiveApiKey}`;
-    console.warn(`[AlphaVantageService] ${msg}`);
-    // Fallback to mock data if API key is not set
+    // console.warn(`[AlphaVantageService] ${msg}`);
     const mock = baseMockStocks.find(s => s.symbol === symbol);
     if (mock) {
       return {
@@ -56,50 +51,43 @@ export async function fetchAlphaVantageQuote(symbol: string, apiKey: string): Pr
   }
 
   const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${effectiveApiKey}`;
-  console.log(`[AlphaVantageService] Fetching quote for ${symbol} from Alpha Vantage.`);
+  // console.log(`[AlphaVantageService] Fetching quote for ${symbol} from Alpha Vantage.`);
 
   try {
     const response = await fetch(url);
+    const data = await response.json(); // Try to parse JSON first
+
     if (!response.ok) {
-      let errorData;
       let errorText = `API request failed with status ${response.status}`;
-      try {
-        errorData = await response.json();
-        console.warn(`[AlphaVantageService] API request failed for ${symbol} with status: ${response.status}. Error data:`, errorData);
-        if (errorData && typeof errorData === 'object') {
-            if ('Note' in errorData && typeof errorData.Note === 'string') {
-                errorText = `Alpha Vantage API Note: ${errorData.Note}`; // Often used for rate limits by AV
-            } else if ('Information' in errorData && typeof errorData.Information === 'string') {
-                errorText = `Alpha Vantage API Info: ${errorData.Information}`; // Also used for rate limits
-            } else if ('Error Message' in errorData && typeof errorData['Error Message'] === 'string') {
-                errorText = `Alpha Vantage API Error: ${errorData['Error Message']}`;
-            }
+      if (data && typeof data === 'object') {
+        if ('Note' in data && typeof data.Note === 'string') {
+            errorText = `Alpha Vantage Note: ${data.Note}`;
+        } else if ('Information' in data && typeof data.Information === 'string') {
+            errorText = `Alpha Vantage Info: ${data.Information}`;
+        } else if ('Error Message' in data && typeof data['Error Message'] === 'string') {
+            errorText = `Alpha Vantage Error: ${data['Error Message']}`;
         }
-      } catch (e) {
-        console.warn(`[AlphaVantageService] Could not parse error JSON for ${symbol}. Status: ${response.status}`);
       }
+      console.warn(`[AlphaVantageService] API request failed for ${symbol}. Status: ${response.status}. Message: ${errorText}. Raw Data:`, data);
       throw new Error(errorText);
     }
 
-    const data = await response.json();
     // console.log(`[AlphaVantageService] Received data for ${symbol}:`, data);
 
     if (data.Information) {
       const infoMessage = `Alpha Vantage: ${data.Information}`;
-      console.warn(`[AlphaVantageService] ${infoMessage} for ${symbol}`);
-      throw new Error(infoMessage); // This is typically the rate limit message.
+      // console.warn(`[AlphaVantageService] ${infoMessage} for ${symbol}`);
+      throw new Error(infoMessage); 
     }
     if (data.Note) {
-      // Notes can sometimes be benign "thank you" messages or rate limit warnings.
-      // If Global Quote is missing, it's an issue.
-      console.warn(`[AlphaVantageService] Alpha Vantage API returned a note for ${symbol}: ${data.Note}`);
+      // console.warn(`[AlphaVantageService] Alpha Vantage API returned a note for ${symbol}: ${data.Note}`);
       if (!data['Global Quote'] || Object.keys(data['Global Quote']).length === 0) {
         throw new Error(`Alpha Vantage Note: ${data.Note} (and no quote data)`);
       }
     }
      if (data['Error Message']) {
       const errorMessage = `Alpha Vantage Error: ${data['Error Message']}`;
-      console.warn(`[AlphaVantageService] ${errorMessage} for ${symbol}`);
+      // console.warn(`[AlphaVantageService] ${errorMessage} for ${symbol}`);
       throw new Error(errorMessage);
     }
 
@@ -117,13 +105,11 @@ export async function fetchAlphaVantageQuote(symbol: string, apiKey: string): Pr
     const changePercent = parseFloat(changePercentString?.replace('%', '')) / 100;
     const volumeStr = quote['06. volume'];
     const latestTradingDay = quote['07. latest trading day'];
-    // Use latestTradingDay for timestamp if available, otherwise fallback to now.
-    // Note: Alpha Vantage free tier data can be delayed, so 'now' might not be accurate for 'latest'.
     const timestamp = latestTradingDay ? new Date(latestTradingDay).getTime() : Date.now();
 
 
     if (isNaN(price) || isNaN(previousClose) || isNaN(change) || isNaN(changePercent)) {
-        console.error(`[AlphaVantageService] Parsed quote data for ${symbol} contains NaN values. Quote:`, quote);
+        console.warn(`[AlphaVantageService] Parsed quote data for ${symbol} contains NaN values. Quote:`, quote);
         throw new Error(`Invalid data format received from Alpha Vantage for ${symbol}. Some numerical values were not parsable.`);
     }
 
@@ -132,15 +118,13 @@ export async function fetchAlphaVantageQuote(symbol: string, apiKey: string): Pr
       price: price,
       change: change,
       changePercent: changePercent,
-      volume: volumeStr, // Keep as string if that's what AV provides directly
-      dailyVolume: parseFloat(volumeStr), // Attempt to parse for numerical operations
+      volume: volumeStr, 
+      dailyVolume: parseFloat(volumeStr), 
       timestamp: timestamp,
       previousClose: previousClose,
     };
 
   } catch (error: any) {
-    // The console.error line previously here is removed.
-    // The error will be re-thrown and handled by the calling context (RealtimeStockContext).
     throw error;
   }
 }
