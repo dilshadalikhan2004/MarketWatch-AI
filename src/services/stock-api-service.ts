@@ -1,8 +1,10 @@
 
 // src/services/stock-api-service.ts
-import type { Stock, RealtimeStockData } from '@/lib/types';
+import type { RealtimeStockData, Stock } from '@/lib/types';
 import { mockStocks as baseMockStocks } from '@/lib/mock-data';
 
+// This function can be used to get more static details like name, logo, initial chart data
+// which might not be available from all quote APIs.
 export async function fetchInitialStockDetails(symbol: string): Promise<Partial<Stock> | null> {
   // console.log(`[StockApiService] fetchInitialStockDetails called for ${symbol}`);
   const baseStock = baseMockStocks.find(s => s.symbol === symbol);
@@ -21,27 +23,26 @@ export async function fetchInitialStockDetails(symbol: string): Promise<Partial<
     low52Week: baseStock.low52Week,
     marketCap: baseStock.marketCap,
     avgVolume: baseStock.avgVolume,
-    previousClose: baseStock.previousClose,
+    previousClose: baseStock.previousClose, // Important for calculating change
   };
 }
 
 
-export async function fetchAlphaVantageQuote(symbol: string, apiKey: string): Promise<Partial<RealtimeStockData> | null> {
-  const apiKeyFromEnv = process.env.NEXT_PUBLIC_ALPHA_VANTAGE_API_KEY;
-  const effectiveApiKey = apiKey || apiKeyFromEnv;
+export async function fetchFmpQuote(symbol: string, apiKey: string): Promise<Partial<RealtimeStockData> | null> {
+  const effectiveApiKey = apiKey || process.env.NEXT_PUBLIC_FMP_API_KEY;
 
-  if (!effectiveApiKey || effectiveApiKey === "YOUR_API_KEY_HERE" || effectiveApiKey === "OM1ZC4CCCCKIGT8O_REPLACE_WITH_YOUR_KEY" ) {
-    const msg = `Alpha Vantage API key is not configured properly or is a placeholder. Mock data will be used if available for ${symbol}. Key: ${effectiveApiKey}`;
-    // console.warn(`[AlphaVantageService] ${msg}`);
+  if (!effectiveApiKey || effectiveApiKey === "YOUR_FMP_API_KEY_HERE") {
+    const msg = `FinancialModelingPrep API key is not configured properly or is a placeholder for ${symbol}. Key: ${effectiveApiKey}`;
+    console.warn(`[FMPService] ${msg}`);
+    // Fallback to mock if key is bad, to keep UI from completely breaking with no data
     const mock = baseMockStocks.find(s => s.symbol === symbol);
     if (mock) {
       return {
         symbol: mock.symbol,
         name: mock.name,
         price: mock.price,
-        change: mock.change,
-        changePercent: mock.changePercent,
-        volume: mock.volume?.toString(),
+        // Change and changePercent will be calculated by the context using previousClose
+        volume: mock.volume?.toString(), // FMP provides volume as number
         dailyVolume: parseFloat(mock.volume?.replace(/[^0-9.]/g, '') || '0'),
         timestamp: Date.now(),
         previousClose: mock.previousClose
@@ -50,81 +51,57 @@ export async function fetchAlphaVantageQuote(symbol: string, apiKey: string): Pr
     throw new Error(msg);
   }
 
-  const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${effectiveApiKey}`;
-  // console.log(`[AlphaVantageService] Fetching quote for ${symbol} from Alpha Vantage.`);
+  const url = `https://financialmodelingprep.com/api/v3/stock/full/real-time-price/${symbol}?apikey=${effectiveApiKey}`;
+  // console.log(`[FMPService] Fetching quote for ${symbol} from FMP.`);
 
   try {
     const response = await fetch(url);
-    const data = await response.json(); // Try to parse JSON first
+    const responseData = await response.json();
 
     if (!response.ok) {
-      let errorText = `API request failed with status ${response.status}`;
-      if (data && typeof data === 'object') {
-        if ('Note' in data && typeof data.Note === 'string') {
-            errorText = `Alpha Vantage Note: ${data.Note}`;
-        } else if ('Information' in data && typeof data.Information === 'string') {
-            errorText = `Alpha Vantage Info: ${data.Information}`;
-        } else if ('Error Message' in data && typeof data['Error Message'] === 'string') {
-            errorText = `Alpha Vantage Error: ${data['Error Message']}`;
-        }
+      let errorText = `FMP API request failed with status ${response.status}`;
+      if (responseData && responseData.message) {
+        errorText = `FMP API Error: ${responseData.message}`;
+      } else if (responseData && responseData["Error Message"]) {
+        errorText = `FMP API Error: ${responseData["Error Message"]}`;
       }
-      console.warn(`[AlphaVantageService] API request failed for ${symbol}. Status: ${response.status}. Message: ${errorText}. Raw Data:`, data);
+      console.warn(`[FMPService] API request failed for ${symbol}. Status: ${response.status}. Message: ${errorText}. Raw Data:`, responseData);
       throw new Error(errorText);
     }
-
-    // console.log(`[AlphaVantageService] Received data for ${symbol}:`, data);
-
-    if (data.Information) {
-      const infoMessage = `Alpha Vantage: ${data.Information}`;
-      // console.warn(`[AlphaVantageService] ${infoMessage} for ${symbol}`);
-      throw new Error(infoMessage); 
-    }
-    if (data.Note) {
-      // console.warn(`[AlphaVantageService] Alpha Vantage API returned a note for ${symbol}: ${data.Note}`);
-      if (!data['Global Quote'] || Object.keys(data['Global Quote']).length === 0) {
-        throw new Error(`Alpha Vantage Note: ${data.Note} (and no quote data)`);
-      }
-    }
-     if (data['Error Message']) {
-      const errorMessage = `Alpha Vantage Error: ${data['Error Message']}`;
-      // console.warn(`[AlphaVantageService] ${errorMessage} for ${symbol}`);
-      throw new Error(errorMessage);
+    
+    // FMP returns an array, usually with one element for this endpoint
+    if (!responseData || !Array.isArray(responseData) || responseData.length === 0) {
+      console.warn(`[FMPService] No data or unexpected format received from FMP for ${symbol}. Response:`, responseData);
+      throw new Error(`No valid quote data received from FMP for ${symbol}.`);
     }
 
+    const quote = responseData[0];
 
-    const quote = data['Global Quote'];
-    if (!quote || Object.keys(quote).length === 0) {
-      console.warn(`[AlphaVantageService] No 'Global Quote' data found for ${symbol} in API response. Response:`, data);
-      throw new Error(`No valid quote data received from Alpha Vantage for ${symbol}. The symbol might be invalid, delisted, or API limit reached.`);
+    if (!quote || typeof quote.symbol === 'undefined') {
+        console.warn(`[FMPService] Invalid quote object in FMP response for ${symbol}. Quote:`, quote);
+        throw new Error(`Invalid data structure from FMP for ${symbol}.`);
     }
+    
+    const price = parseFloat(quote.lastSalePrice);
+    const dailyVolume = Number(quote.volume); // FMP provides volume as number
+    const timestamp = Number(quote.lastSaleTime); // FMP provides timestamp in ms
 
-    const price = parseFloat(quote['05. price']);
-    const previousClose = parseFloat(quote['08. previous close']);
-    const change = parseFloat(quote['09. change']);
-    const changePercentString = quote['10. change percent'];
-    const changePercent = parseFloat(changePercentString?.replace('%', '')) / 100;
-    const volumeStr = quote['06. volume'];
-    const latestTradingDay = quote['07. latest trading day'];
-    const timestamp = latestTradingDay ? new Date(latestTradingDay).getTime() : Date.now();
-
-
-    if (isNaN(price) || isNaN(previousClose) || isNaN(change) || isNaN(changePercent)) {
-        console.warn(`[AlphaVantageService] Parsed quote data for ${symbol} contains NaN values. Quote:`, quote);
-        throw new Error(`Invalid data format received from Alpha Vantage for ${symbol}. Some numerical values were not parsable.`);
+    if (isNaN(price)) {
+        console.warn(`[FMPService] Parsed quote data for ${symbol} contains NaN price. Quote:`, quote);
+        throw new Error(`Invalid price data received from FMP for ${symbol}.`);
     }
 
     return {
-      symbol: quote['01. symbol'],
+      symbol: quote.symbol,
       price: price,
-      change: change,
-      changePercent: changePercent,
-      volume: volumeStr, 
-      dailyVolume: parseFloat(volumeStr), 
-      timestamp: timestamp,
-      previousClose: previousClose,
+      // change & changePercent will be calculated in RealtimeStockContext
+      dailyVolume: isNaN(dailyVolume) ? undefined : dailyVolume,
+      timestamp: isNaN(timestamp) ? Date.now() : timestamp,
+      // previousClose is not provided by this FMP endpoint, context will use its stored one
     };
 
   } catch (error: any) {
-    throw error;
+    // console.error(`[FMPService] Error in fetchFmpQuote for ${symbol}:`, error.message);
+    throw error; // Re-throw to be caught by RealtimeStockContext
   }
 }
