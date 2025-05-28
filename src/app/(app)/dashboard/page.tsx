@@ -18,7 +18,7 @@ import { formatCurrency, formatPercentage } from '@/lib/formatters';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 import { useRealtimeStockData } from '@/contexts/RealtimeStockContext';
-import { getNewsArticlesAction } from '@/lib/actions/news'; // Import the new server action
+import { getNewsArticlesAction } from '@/lib/actions/news';
 
 const chartConfig = {
   price: { label: "Price", color: "hsl(var(--chart-1))" },
@@ -35,7 +35,7 @@ export default function DashboardPage() {
   const [isLoadingNews, setIsLoadingNews] = useState(true);
   const [newsError, setNewsError] = useState<string | null>(null);
 
-  const marketOverviewStockSymbol = useMemo(() => mockStocks.length > 0 ? mockStocks[0].symbol : 'AAPL', []); // Default to AAPL if mockStocks is empty
+  const marketOverviewStockSymbol = useMemo(() => mockStocks.length > 0 ? mockStocks[0].symbol : 'AAPL', []); 
   const selectedMarketSymbol = marketOverviewStockSymbol;
 
 
@@ -52,30 +52,37 @@ export default function DashboardPage() {
     allDashboardSymbolsToRefresh.forEach(subscribeToSymbol);
 
     const fetchNews = async () => {
+      console.log('[DashboardPage] useEffect: Attempting to fetch news...');
       setIsLoadingNews(true);
       setNewsError(null);
-      const result = await getNewsArticlesAction('finance market', 3); // Fetch 3 articles related to finance
-      if (result.error) {
-        setNewsError(result.error);
-        console.error("Error fetching news:", result.error);
-      } else if (result.articles) {
-        setRecentNews(result.articles);
+      try {
+        const result = await getNewsArticlesAction('finance market', 3); 
+        console.log('[DashboardPage] useEffect: News fetch result:', result);
+        if (result.error) {
+          setNewsError(result.error);
+          console.error("[DashboardPage] Error fetching news:", result.error);
+        } else if (result.articles) {
+          setRecentNews(result.articles);
+        }
+      } catch (e) {
+        console.error("[DashboardPage] Exception during news fetch:", e);
+        setNewsError("An unexpected error occurred while fetching news.");
+      } finally {
+        setIsLoadingNews(false);
       }
-      setIsLoadingNews(false);
     };
     fetchNews();
     
     if (selectedMarketSymbol) {
         console.log('[DashboardPage] Initial auto-fetch for market overview stock:', selectedMarketSymbol);
-        refreshStockData([selectedMarketSymbol]); // Fetch only for market overview stock initially
+        refreshStockData([selectedMarketSymbol]); 
     }
 
     return () => {
       allDashboardSymbolsToRefresh.forEach(unsubscribeFromSymbol);
     };
-  // Removed refreshStockData from dependency array as it's memoized in context with useRefs
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isMounted, selectedMarketSymbol, subscribeToSymbol, unsubscribeFromSymbol, allDashboardSymbolsToRefresh]);
+  }, [isMounted, marketOverviewStockSymbol]); // Simplified dependencies for initial load
 
 
   const marketOverviewStock = useMemo(() => {
@@ -85,7 +92,7 @@ export default function DashboardPage() {
     if (isMounted && rtData && rtData.price !== undefined) {
       return { ...baseStock, ...rtData, name: baseStock?.name || rtData.symbol, logoUrl: baseStock?.logoUrl, dataAiHint: baseStock?.dataAiHint, chartData: rtData.chartData || baseStock?.chartData || [] } as Stock;
     }
-    return baseStock || { symbol: selectedMarketSymbol, name: selectedMarketSymbol, price: 0, change:0, changePercent:0, chartData: [] } as Stock; // Provide a fallback structure
+    return baseStock || { symbol: selectedMarketSymbol, name: selectedMarketSymbol, price: 0, change:0, changePercent:0, chartData: [] } as Stock;
   }, [selectedMarketSymbol, realtimeStockData, isMounted]);
   
 
@@ -128,12 +135,11 @@ export default function DashboardPage() {
       return list.map(mover => {
         const baseMoverInfo = mockStocks.find(s => s.symbol === mover.symbol);
         const rtData = realtimeStockData[mover.symbol];
-        // If realtime data exists and component is mounted, use it, otherwise fallback to initial mover data or base mock.
         if (isMounted && rtData && rtData.price !== undefined) {
           return { ...baseMoverInfo, ...rtData, name: baseMoverInfo?.name || rtData.name || mover.symbol, type: mover.type } as MarketMover;
         }
         return { ...baseMoverInfo, ...mover, name: baseMoverInfo?.name || mover.name || mover.symbol } as MarketMover; 
-      }).filter(mover => mover.symbol && mover.name); // Ensure symbol and name are present
+      }).filter(mover => mover.symbol && mover.name); 
     };
     const gainers = updateMoverList(initialMarketMovers.gainers).sort((a,b) => (b.changePercent || 0) - (a.changePercent || 0));
     const losers = updateMoverList(initialMarketMovers.losers).sort((a,b) => (a.changePercent || 0) - (b.changePercent || 0));
@@ -161,8 +167,27 @@ export default function DashboardPage() {
         console.log('[DashboardPage] Manual refresh triggered for symbols:', allDashboardSymbolsToRefresh);
         refreshStockData(allDashboardSymbolsToRefresh);
     }
-    // Optionally refresh news as well, or keep it on its own lifecycle
-    // fetchNews(); 
+    // Re-fetch news on manual refresh too
+    const fetchNews = async () => {
+        console.log('[DashboardPage] Manual Refresh: Attempting to fetch news...');
+        setIsLoadingNews(true);
+        setNewsError(null);
+        try {
+            const result = await getNewsArticlesAction('finance market', 3);
+            console.log('[DashboardPage] Manual Refresh: News fetch result:', result);
+            if (result.error) {
+            setNewsError(result.error);
+            } else if (result.articles) {
+            setRecentNews(result.articles);
+            }
+        } catch(e) {
+            console.error("[DashboardPage] Manual Refresh: Exception during news fetch:", e);
+            setNewsError("An unexpected error occurred while fetching news.");
+        } finally {
+            setIsLoadingNews(false);
+        }
+    };
+    fetchNews();
   };
   
   if (!isMounted && isLoadingRealtime && !marketOverviewStock) {
@@ -183,16 +208,16 @@ export default function DashboardPage() {
     <div className="flex w-full flex-col gap-6">
       <PageHeader
         title="Dashboard Overview"
-        description="Market insights at a glance. Data updates from Alpha Vantage."
+        description="Market insights at a glance. Stock data from Alpha Vantage, News from NewsAPI.org."
         icon={AreaChart}
         actions={
-          <Button onClick={handleRefreshAllDashboardData} disabled={isLoadingRealtime} variant="outline">
-            <RefreshCw className={cn("mr-2 h-4 w-4", isLoadingRealtime && "animate-spin")} />
+          <Button onClick={handleRefreshAllDashboardData} disabled={isLoadingRealtime || isLoadingNews} variant="outline">
+            <RefreshCw className={cn("mr-2 h-4 w-4", (isLoadingRealtime || isLoadingNews) && "animate-spin")} />
             Refresh Data
           </Button>
         }
       />
-      {isLoadingRealtime && isMounted && <p className="text-sm text-muted-foreground">Fetching latest data from Alpha Vantage...</p>}
+      {(isLoadingRealtime || isLoadingNews) && isMounted && <p className="text-sm text-muted-foreground">Fetching latest data...</p>}
       {dataError && isMounted && (
         <Alert variant="destructive" className="max-w-full">
             <AlertCircle className="h-4 w-4" />
@@ -394,7 +419,7 @@ export default function DashboardPage() {
               <Link href="/sentiment">View All News <ArrowRight className="ml-2 h-4 w-4" /></Link>
             </Button>
           </CardTitle>
-          <CardDescription>Latest headlines impacting the market.</CardDescription>
+          <CardDescription>Latest headlines impacting the market. Data from NewsAPI.org.</CardDescription>
         </CardHeader>
         <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           {isLoadingNews && <p className="text-muted-foreground text-center py-4 md:col-span-2 lg:col-span-3">Loading news...</p>}

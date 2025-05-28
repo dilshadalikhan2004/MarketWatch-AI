@@ -30,7 +30,9 @@ export function NewsCard({ article, className, showSentimentBadge = false }: New
   };
 
   const imageSrc = article.urlToImage || `https://placehold.co/600x400.png`;
-  const imageHint = article.urlToImage ? 'article image' : (article.dataAiHint || 'news image');
+  // Use a more generic hint if article.title is very short or missing
+  const imageAlt = article.title && article.title.length > 10 ? article.title : "News article image";
+  const imageHint = article.urlToImage ? 'article image' : (article.dataAiHint || 'news illustration');
 
   return (
     <Card className={cn("shadow-md hover:shadow-lg transition-shadow duration-200 flex flex-col", className)}>
@@ -38,28 +40,28 @@ export function NewsCard({ article, className, showSentimentBadge = false }: New
         <div className="relative w-full h-40">
           <Image
             src={imageSrc}
-            alt={article.title}
-            layout="fill"
-            objectFit="cover"
-            className="rounded-t-lg"
+            alt={imageAlt}
+            fill
+            sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw" // Added sizes prop
+            className="rounded-t-lg object-cover"
             data-ai-hint={imageHint}
             onError={(e) => {
-              // Fallback if the API image fails to load
               const target = e.target as HTMLImageElement;
-              target.src = `https://placehold.co/600x400.png`;
-              target.dataset.aiHint = article.dataAiHint || 'news image fallback';
+              target.src = `https://placehold.co/600x400.png`; // Fallback placeholder
+              target.alt = 'Fallback news image';
+              target.dataset.aiHint = 'news placeholder fallback';
             }}
           />
         </div>
       )}
       <CardHeader className="pb-2">
-        <CardTitle className="text-md leading-tight h-12 overflow-hidden" title={article.title}>
-          <Link href={article.url} target="_blank" rel="noopener noreferrer" className="hover:underline">
+        <CardTitle className="text-md leading-tight h-12 overflow-hidden" title={article.title || "Untitled Article"}>
+          <Link href={article.url || '#'} target="_blank" rel="noopener noreferrer" className="hover:underline">
             {article.title || "Untitled Article"}
           </Link>
         </CardTitle>
         <CardDescription className="text-xs">
-          {article.source?.name || "Unknown Source"} - {formatDate(article.publishedAt)}
+          {article.source?.name || "Unknown Source"} - {article.publishedAt ? formatDate(article.publishedAt) : "Date N/A"}
         </CardDescription>
       </CardHeader>
       <CardContent className="text-sm text-muted-foreground flex-grow pt-0">
@@ -73,7 +75,7 @@ export function NewsCard({ article, className, showSentimentBadge = false }: New
           </Badge>
         )}
         <Link 
-          href={article.url} 
+          href={article.url || '#'}
           target="_blank" 
           rel="noopener noreferrer" 
           className={cn(
