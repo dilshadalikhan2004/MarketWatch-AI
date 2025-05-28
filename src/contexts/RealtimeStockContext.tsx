@@ -2,7 +2,7 @@
 "use client";
 import type { RealtimeStockData, Stock } from '@/lib/types';
 import { mockStocks as baseMockStocks } from '@/lib/mock-data';
-import { fetchInitialStockDetails, fetchFmpQuote } from '@/services/stock-api-service'; // Updated import
+import { fetchInitialStockDetails, fetchFmpQuote } from '@/services/stock-api-service';
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useRef } from 'react';
 
 interface RealtimeStockContextState {
@@ -37,7 +37,7 @@ export const RealtimeStockProvider: React.FC<RealtimeStockProviderProps> = ({ ch
         ...stock,
         dailyVolume: parseFloat(stock.volume?.replace(/[^0-9.]/g, '') || '0'),
         timestamp: Date.now(),
-        previousClose: stock.previousClose
+        previousClose: stock.previousClose,
       };
     });
     return initialData;
@@ -47,6 +47,8 @@ export const RealtimeStockProvider: React.FC<RealtimeStockProviderProps> = ({ ch
   const [error, setError] = useState<string | null>(null);
 
   const isMountedRef = useRef(false);
+  const ongoingRequestsRef = useRef(new Set<string>());
+
   useEffect(() => {
     isMountedRef.current = true;
     return () => {
@@ -54,10 +56,28 @@ export const RealtimeStockProvider: React.FC<RealtimeStockProviderProps> = ({ ch
     };
   }, []);
 
-  const [apiKey] = useState(process.env.NEXT_PUBLIC_FMP_API_KEY); // Changed to FMP key
+  const [apiKey, setApiKey] = useState<string | undefined>(undefined);
+
+  useEffect(() => {
+    // Ensure API key is loaded client-side to avoid hydration issues with process.env
+    // and to make it available for dependencies.
+    const key = process.env.NEXT_PUBLIC_FMP_API_KEY;
+    setApiKey(key);
+    if (!key || key === "YOUR_FMP_API_KEY_HERE") {
+      const msg = "FinancialModelingPrep API key is not configured or is a placeholder. Real-time updates are disabled. Please set NEXT_PUBLIC_FMP_API_KEY in your .env file with a valid key.";
+      if (!error?.startsWith("FinancialModelingPrep API key is not configured")) {
+        setError(msg);
+      }
+    } else {
+      if (error?.startsWith("FinancialModelingPrep API key is not configured")) {
+        setError(null);
+      }
+    }
+  }, [error]); // Re-check if error was related to API key config
 
   const stockDataRef = useRef(stockData);
   const subscribedSymbolsRef = useRef(subscribedSymbols);
+  const errorRef = useRef(error);
 
   useEffect(() => {
     stockDataRef.current = stockData;
@@ -68,26 +88,15 @@ export const RealtimeStockProvider: React.FC<RealtimeStockProviderProps> = ({ ch
   }, [subscribedSymbols]);
 
   useEffect(() => {
-    if (!apiKey || apiKey === "YOUR_FMP_API_KEY_HERE" ) { // Changed placeholder check
-      const msg = "FinancialModelingPrep API key is not configured or is a placeholder. Real-time updates are disabled. Please set NEXT_PUBLIC_FMP_API_KEY in your .env file with a valid key.";
-      // console.warn('[StockDataProvider] Configuration Issue:', msg);
-      if (!error?.startsWith("FinancialModelingPrep API key is not configured")) {
-        setError(msg);
-      }
-    } else {
-      // console.log('[StockDataProvider] FMP API Key loaded.');
-      if (error?.startsWith("FinancialModelingPrep API key is not configured")) {
-        setError(null); // Clear config error if key is now valid
-      }
-    }
-  }, [apiKey, error]);
+    errorRef.current = error;
+  }, [error]);
+
 
   const subscribeToSymbol = useCallback((symbol: string) => {
     setSubscribedSymbols(prev => {
       if (prev.has(symbol)) return prev;
       const newSet = new Set(prev);
-newSet.add(symbol);
-      // console.log(`[StockDataProvider] Subscribed to ${symbol}. Current subscriptions:`, Array.from(newSet));
+      newSet.add(symbol);
       return newSet;
     });
   }, []);
@@ -96,19 +105,18 @@ newSet.add(symbol);
     setSubscribedSymbols(prev => {
       const newSet = new Set(prev);
       newSet.delete(symbol);
-      // console.log(`[StockDataProvider] Unsubscribed from ${symbol}. Current subscriptions:`, Array.from(newSet));
       return newSet;
     });
   }, []);
 
   const refreshStockData = useCallback(async (symbolsToRefreshInput?: string[] | string) => {
-    if (!isMountedRef.current) return; // Don't run if component isn't mounted
+    if (!isMountedRef.current) return;
 
     if (!apiKey || apiKey === "YOUR_FMP_API_KEY_HERE") {
       const msg = "FinancialModelingPrep API key is not configured or is a placeholder. Real-time updates are disabled. Please set NEXT_PUBLIC_FMP_API_KEY in your .env file with a valid key.";
-      if (!error?.startsWith("FinancialModelingPrep API key is not configured")) {
-        setError(msg);
-      }
+       if (errorRef.current !== msg) { // Avoid redundant setError calls
+            setError(msg);
+       }
       setIsLoading(false);
       return;
     }
@@ -123,99 +131,109 @@ newSet.add(symbol);
     }
 
     if (symbolsToFetchArray.length === 0) {
-        // console.log("[StockDataProvider] No symbols to refresh.");
-        setIsLoading(false); // Ensure loading is false if nothing to fetch
+        setIsLoading(false);
+        return;
+    }
+    
+    const newRequests = symbolsToFetchArray.filter(s => !ongoingRequestsRef.current.has(s));
+    if (newRequests.length === 0) {
+        // console.log('[StockDataProvider] All requested symbols are already being fetched or no new symbols.');
+        // If no *new* symbols to fetch, but other requests might complete, we might still be loading
+        // Consider not setting isLoading to false here unless ongoingRequestsRef is also empty.
+        if (ongoingRequestsRef.current.size === 0) setIsLoading(false);
         return;
     }
 
-    // console.log("[StockDataProvider] Refreshing data for symbols:", symbolsToFetchArray);
     setIsLoading(true);
-    // No need to clear non-config error here, as it might provide context to user
-    // if (error && !error.startsWith("FinancialModelingPrep API key is not configured")) setError(null);
+    newRequests.forEach(s => ongoingRequestsRef.current.add(s));
+    // console.log(`[StockDataProvider] Refreshing data for symbols: ${newRequests.join(', ')}. Ongoing: ${Array.from(ongoingRequestsRef.current).join(', ')}`);
 
 
-    const promises = symbolsToFetchArray.map(async (symbol) => {
+    const promises = newRequests.map(async (symbol) => {
       try {
-        const quoteData = await fetchFmpQuote(symbol, apiKey); // Use FMP service
-        const currentSymbolData = stockDataRef.current[symbol];
+        const quoteData = await fetchFmpQuote(symbol, apiKey);
         
-        // Fetch base details (name, logo, chartData, previousClose) only if not already present or to ensure previousClose is there
-        const baseDetails = (currentSymbolData && currentSymbolData.name && currentSymbolData.previousClose !== undefined) 
-            ? currentSymbolData 
-            : await fetchInitialStockDetails(symbol);
+        const baseDetails = stockDataRef.current[symbol] || await fetchInitialStockDetails(symbol) || { 
+            symbol, 
+            name: symbol, 
+            price: 0, 
+            change: 0, 
+            changePercent: 0, 
+            previousClose: 0 
+        };
 
         if (quoteData && quoteData.price !== undefined) {
-          setStockData(prevData => {
-            const existingData = prevData[symbol] || {};
-            const previousClose = existingData.previousClose ?? baseDetails?.previousClose ?? quoteData.price; // Fallback for previousClose
-            
-            let change = 0;
-            let changePercent = 0;
-            if (previousClose !== undefined && previousClose !== 0) {
-                change = quoteData.price! - previousClose;
-                changePercent = change / previousClose;
-            }
+          const previousClose = baseDetails?.previousClose ?? quoteData.price;
+          let change = 0;
+          let changePercent = 0;
+          if (typeof previousClose === 'number' && previousClose !== 0) {
+              change = quoteData.price - previousClose;
+              changePercent = change / previousClose;
+          }
 
+          setStockData(prevData => {
             const updatedStock: RealtimeStockData = {
               symbol: symbol,
-              name: baseDetails?.name || existingData.name || symbol,
-              logoUrl: baseDetails?.logoUrl || existingData.logoUrl,
-              dataAiHint: baseDetails?.dataAiHint || existingData.dataAiHint,
-              chartData: baseDetails?.chartData || existingData.chartData || [],
+              name: baseDetails?.name || prevData[symbol]?.name || symbol,
+              logoUrl: baseDetails?.logoUrl || prevData[symbol]?.logoUrl,
+              dataAiHint: baseDetails?.dataAiHint || prevData[symbol]?.dataAiHint,
+              chartData: baseDetails?.chartData || prevData[symbol]?.chartData || [],
               price: quoteData.price,
               change: change,
               changePercent: changePercent,
-              dailyVolume: quoteData.dailyVolume ?? existingData.dailyVolume,
+              dailyVolume: quoteData.dailyVolume ?? prevData[symbol]?.dailyVolume,
               timestamp: quoteData.timestamp ?? Date.now(),
-              previousClose: previousClose, // Persist previousClose
-              marketCap: baseDetails?.marketCap || existingData.marketCap,
-              avgVolume: baseDetails?.avgVolume || existingData.avgVolume,
-              peRatio: baseDetails?.peRatio || existingData.peRatio,
-              high52Week: baseDetails?.high52Week || existingData.high52Week,
-              low52Week: baseDetails?.low52Week || existingData.low52Week,
+              previousClose: previousClose,
+              marketCap: baseDetails?.marketCap || prevData[symbol]?.marketCap,
+              avgVolume: baseDetails?.avgVolume || prevData[symbol]?.avgVolume,
+              peRatio: baseDetails?.peRatio || prevData[symbol]?.peRatio,
+              high52Week: baseDetails?.high52Week || prevData[symbol]?.high52Week,
+              low52Week: baseDetails?.low52Week || prevData[symbol]?.low52Week,
             };
             return { ...prevData, [symbol]: updatedStock };
           });
         } else {
-          // console.warn(`[StockDataProvider] No quote data returned for ${symbol} from FMP service.`);
+          // console.warn(`[StockDataProvider] No quote data returned for ${symbol} from FMP.`);
         }
       } catch (err: any) {
-        console.warn(`[StockDataProvider] Error refreshing data for ${symbol}:`, err.message);
-        // More specific error handling for API limit messages
-        if (err.message.toLowerCase().includes("limit") || err.message.toLowerCase().includes("requests per day")) {
-             setError(prevError => {
-                const newErrorMessage = `API limit likely reached for ${symbol}. ${err.message}`;
-                return prevError && prevError.includes("API limit") ? prevError : `${prevError ? prevError + '; ' : ''}${newErrorMessage}`;
-            });
+        // console.warn(`[StockDataProvider] Error refreshing data for ${symbol}:`, err.message);
+        if (err.message.includes("API call frequency is") || err.message.includes("API rate limit") || err.message.includes("limit reached") ) {
+             const newErrorMessage = `API limit likely reached for ${symbol}. ${err.message}`;
+             setError(prevError => prevError && prevError.includes(newErrorMessage.substring(0,30)) ? prevError : `${prevError ? prevError + '; ' : ''}${newErrorMessage}`);
         } else if (err.message.includes("API key is not configured")) {
-             setError(err.message); // Propagate this specific error
+             setError(err.message);
         } else {
-            setError(prevError => {
-                const newErrorMessage = `Failed to fetch ${symbol}. ${err.message}`;
-                return prevError && prevError.includes(`Failed to fetch ${symbol}`) ? prevError : `${prevError ? prevError + '; ' : ''}${newErrorMessage}`;
-            });
+             const newErrorMessage = `Failed to fetch ${symbol}. ${err.message}`;
+             setError(prevError => prevError && prevError.includes(newErrorMessage.substring(0,30)) ? prevError : `${prevError ? prevError + '; ' : ''}${newErrorMessage}`);
         }
+      } finally {
+        ongoingRequestsRef.current.delete(symbol);
       }
     });
 
     try {
         await Promise.allSettled(promises);
-        // console.log("[StockDataProvider] Finished refreshing data cycle.");
     } finally {
-        if (isMountedRef.current) { // Only update state if component is still mounted
+        if (isMountedRef.current && ongoingRequestsRef.current.size === 0) {
             setIsLoading(false);
         }
     }
-  }, [apiKey, error]); // Dependencies for useCallback
+  }, [apiKey]); // Only apiKey as primary dependency for function stability
 
   useEffect(() => {
-    const symbolsArray = Array.from(subscribedSymbolsRef.current);
-    if (isMountedRef.current && symbolsArray.length > 0 && apiKey && apiKey !== "YOUR_FMP_API_KEY_HERE") {
-      // console.log("[StockDataProvider] Subscribed symbols changed or API key became available, triggering refresh:", symbolsArray);
-      // refreshStockData(symbolsArray); // Commented out to prevent initial auto-fetch on every subscription change
-                                      // Data refresh should be more controlled, e.g., on mount or manual trigger
+    // This effect is for initial load or when API key becomes available
+    // and there are already subscribed symbols (e.g. from localStorage persistence)
+    if (isMountedRef.current && apiKey && apiKey !== "YOUR_FMP_API_KEY_HERE") {
+      const currentSubscribed = Array.from(subscribedSymbolsRef.current);
+      if (currentSubscribed.length > 0 && ongoingRequestsRef.current.size === 0) {
+        // console.log('[StockDataProvider] Context Mount/API Key Ready: Triggering refresh for existing subscriptions:', currentSubscribed);
+        refreshStockData(currentSubscribed);
+      } else if (currentSubscribed.length === 0 && ongoingRequestsRef.current.size === 0) {
+        setIsLoading(false);
+      }
     }
-  }, [subscribedSymbols, apiKey]); // Removed refreshStockData from here to avoid loops, it's stable now.
+  }, [apiKey, refreshStockData]); // Runs when apiKey changes or refreshStockData reference changes (which is rare now)
+
 
   return (
     <RealtimeStockContext.Provider value={{ stockData, subscribedSymbols, subscribeToSymbol, unsubscribeFromSymbol, refreshStockData, isLoading, error }}>
@@ -223,3 +241,4 @@ newSet.add(symbol);
     </RealtimeStockContext.Provider>
   );
 };
+
