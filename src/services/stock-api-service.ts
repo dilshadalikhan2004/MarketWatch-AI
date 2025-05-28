@@ -3,46 +3,41 @@
 import type { Stock, RealtimeStockData } from '@/lib/types';
 import { mockStocks as baseMockStocks } from '@/lib/mock-data';
 
-const API_SIMULATION_DELAY = 300; // Simulate network delay
-
+// Function to fetch initial static details (name, logo, chartData) if needed,
+// as GLOBAL_QUOTE might not provide all of these.
 export async function fetchInitialStockDetails(symbol: string): Promise<Partial<Stock> | null> {
   console.log(`[StockApiService] fetchInitialStockDetails called for ${symbol}`);
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      const baseStock = baseMockStocks.find(s => s.symbol === symbol);
-      if (!baseStock) {
-        console.warn(`[StockApiService] No base mock stock found for ${symbol} in fetchInitialStockDetails.`);
-        resolve(null);
-        return;
-      }
-      resolve({
-        symbol: baseStock.symbol,
-        name: baseStock.name,
-        logoUrl: baseStock.logoUrl,
-        dataAiHint: baseStock.dataAiHint,
-        chartData: baseStock.chartData,
-        peRatio: baseStock.peRatio,
-        high52Week: baseStock.high52Week,
-        low52Week: baseStock.low52Week,
-        marketCap: baseStock.marketCap,
-        avgVolume: baseStock.avgVolume,
-        previousClose: baseStock.previousClose,
-      });
-    }, API_SIMULATION_DELAY);
-  });
+  // In a real app, this might be another API call or from a database.
+  // For now, we'll use our base mock data.
+  const baseStock = baseMockStocks.find(s => s.symbol === symbol);
+  if (!baseStock) {
+    console.warn(`[StockApiService] No base mock stock found for ${symbol} in fetchInitialStockDetails.`);
+    return null;
+  }
+  return {
+    symbol: baseStock.symbol,
+    name: baseStock.name,
+    logoUrl: baseStock.logoUrl,
+    dataAiHint: baseStock.dataAiHint,
+    chartData: baseStock.chartData, // Keep mock chart data for now
+    peRatio: baseStock.peRatio,
+    high52Week: baseStock.high52Week,
+    low52Week: baseStock.low52Week,
+    marketCap: baseStock.marketCap,
+    avgVolume: baseStock.avgVolume,
+    previousClose: baseStock.previousClose, // Important for initial change calculation
+  };
 }
+
 
 export async function fetchAlphaVantageQuote(symbol: string, apiKey: string): Promise<Partial<RealtimeStockData> | null> {
   const apiKeyFromEnv = process.env.NEXT_PUBLIC_ALPHA_VANTAGE_API_KEY;
   const effectiveApiKey = apiKey || apiKeyFromEnv;
 
-  console.log(`[AlphaVantageService] Attempting to fetch quote for ${symbol}. API Key effectively used: ${effectiveApiKey ? effectiveApiKey.substring(0,4) + '...' : 'N/A'}`);
-
-
-  if (!effectiveApiKey || effectiveApiKey === "YOUR_API_KEY_HERE" || effectiveApiKey === "V89R5M3623Z4P7A6_REPLACE_WITH_YOUR_KEY" || effectiveApiKey === "OM1ZC4CCCCKIGT8O_REPLACE_WITH_YOUR_KEY") {
-    const msg = `Alpha Vantage API key is not configured properly or is a placeholder. Mock data will be used if available for ${symbol}. Key found: ${effectiveApiKey}`;
+  if (!effectiveApiKey || effectiveApiKey === "YOUR_API_KEY_HERE" || effectiveApiKey === "OM1ZC4CCCCKIGT8O_REPLACE_WITH_YOUR_KEY" ) {
+    const msg = `Alpha Vantage API key is not configured properly or is a placeholder. Mock data will be used if available for ${symbol}. Key: ${effectiveApiKey}`;
     console.warn(`[AlphaVantageService] ${msg}`);
-    // Fallback to mock data if API key is not set - this part might be removed if we always want to throw an error
+    // Fallback to mock data if API key is not set
     const mock = baseMockStocks.find(s => s.symbol === symbol);
     if (mock) {
       return {
@@ -57,11 +52,11 @@ export async function fetchAlphaVantageQuote(symbol: string, apiKey: string): Pr
         previousClose: mock.previousClose
       };
     }
-    throw new Error(msg); // Or simply return null if preferred
+    throw new Error(msg);
   }
 
   const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${effectiveApiKey}`;
-  console.log(`[AlphaVantageService] Fetching quote for ${symbol} from ${url.replace(effectiveApiKey, "YOUR_API_KEY_REDACTED")}`);
+  console.log(`[AlphaVantageService] Fetching quote for ${symbol} from Alpha Vantage.`);
 
   try {
     const response = await fetch(url);
@@ -70,46 +65,49 @@ export async function fetchAlphaVantageQuote(symbol: string, apiKey: string): Pr
       let errorText = `API request failed with status ${response.status}`;
       try {
         errorData = await response.json();
-        console.error(`[AlphaVantageService] API request failed for ${symbol} with status: ${response.status}. Error data:`, errorData);
+        console.warn(`[AlphaVantageService] API request failed for ${symbol} with status: ${response.status}. Error data:`, errorData);
         if (errorData && typeof errorData === 'object') {
             if ('Note' in errorData && typeof errorData.Note === 'string') {
-                errorText = `Alpha Vantage API Error: ${errorData.Note}`;
+                errorText = `Alpha Vantage API Note: ${errorData.Note}`; // Often used for rate limits by AV
             } else if ('Information' in errorData && typeof errorData.Information === 'string') {
-                errorText = `Alpha Vantage API Info: ${errorData.Information}`;
+                errorText = `Alpha Vantage API Info: ${errorData.Information}`; // Also used for rate limits
             } else if ('Error Message' in errorData && typeof errorData['Error Message'] === 'string') {
                 errorText = `Alpha Vantage API Error: ${errorData['Error Message']}`;
             }
         }
       } catch (e) {
-        console.error(`[AlphaVantageService] Could not parse error JSON for ${symbol}. Status: ${response.status}`);
+        console.warn(`[AlphaVantageService] Could not parse error JSON for ${symbol}. Status: ${response.status}`);
       }
       throw new Error(errorText);
     }
 
     const data = await response.json();
-    console.log(`[AlphaVantageService] Received data for ${symbol}:`, data);
+    // console.log(`[AlphaVantageService] Received data for ${symbol}:`, data);
 
-    // Check for top-level informational or error messages from Alpha Vantage
     if (data.Information) {
-      console.warn(`[AlphaVantageService] Alpha Vantage API returned an informational message for ${symbol}: ${data.Information}`);
-      throw new Error(`Alpha Vantage: ${data.Information}`);
+      const infoMessage = `Alpha Vantage: ${data.Information}`;
+      console.warn(`[AlphaVantageService] ${infoMessage} for ${symbol}`);
+      throw new Error(infoMessage); // This is typically the rate limit message.
     }
-    if (data.Note) { // This might be for higher frequency limits on premium keys
+    if (data.Note) {
+      // Notes can sometimes be benign "thank you" messages or rate limit warnings.
+      // If Global Quote is missing, it's an issue.
       console.warn(`[AlphaVantageService] Alpha Vantage API returned a note for ${symbol}: ${data.Note}`);
-      // Don't necessarily throw, might be a "thank you for using" message on success with Global Quote
-      // unless Global Quote itself is missing.
+      if (!data['Global Quote'] || Object.keys(data['Global Quote']).length === 0) {
+        throw new Error(`Alpha Vantage Note: ${data.Note} (and no quote data)`);
+      }
     }
      if (data['Error Message']) {
-      console.warn(`[AlphaVantageService] Alpha Vantage API returned an error message for ${symbol}: ${data['Error Message']}`);
-      throw new Error(`Alpha Vantage Error: ${data['Error Message']}`);
+      const errorMessage = `Alpha Vantage Error: ${data['Error Message']}`;
+      console.warn(`[AlphaVantageService] ${errorMessage} for ${symbol}`);
+      throw new Error(errorMessage);
     }
 
 
     const quote = data['Global Quote'];
     if (!quote || Object.keys(quote).length === 0) {
-      console.warn(`[AlphaVantageService] No 'Global Quote' data found for ${symbol} in API response. Full response:`, data);
-      // At this point, if Information/Note/Error Message didn't catch it, it's an unexpected empty quote.
-      throw new Error(`No valid quote data received from Alpha Vantage for ${symbol}. The symbol might be invalid or delisted.`);
+      console.warn(`[AlphaVantageService] No 'Global Quote' data found for ${symbol} in API response. Response:`, data);
+      throw new Error(`No valid quote data received from Alpha Vantage for ${symbol}. The symbol might be invalid, delisted, or API limit reached.`);
     }
 
     const price = parseFloat(quote['05. price']);
@@ -119,7 +117,10 @@ export async function fetchAlphaVantageQuote(symbol: string, apiKey: string): Pr
     const changePercent = parseFloat(changePercentString?.replace('%', '')) / 100;
     const volumeStr = quote['06. volume'];
     const latestTradingDay = quote['07. latest trading day'];
+    // Use latestTradingDay for timestamp if available, otherwise fallback to now.
+    // Note: Alpha Vantage free tier data can be delayed, so 'now' might not be accurate for 'latest'.
     const timestamp = latestTradingDay ? new Date(latestTradingDay).getTime() : Date.now();
+
 
     if (isNaN(price) || isNaN(previousClose) || isNaN(change) || isNaN(changePercent)) {
         console.error(`[AlphaVantageService] Parsed quote data for ${symbol} contains NaN values. Quote:`, quote);
@@ -131,16 +132,15 @@ export async function fetchAlphaVantageQuote(symbol: string, apiKey: string): Pr
       price: price,
       change: change,
       changePercent: changePercent,
-      volume: volumeStr,
-      dailyVolume: parseFloat(volumeStr),
+      volume: volumeStr, // Keep as string if that's what AV provides directly
+      dailyVolume: parseFloat(volumeStr), // Attempt to parse for numerical operations
       timestamp: timestamp,
       previousClose: previousClose,
     };
 
   } catch (error: any) {
-    console.error(`[AlphaVantageService] Error in fetchAlphaVantageQuote for ${symbol}:`, error.message);
-    // Re-throw the error so it's caught by RealtimeStockContext
-    // and the error state can be updated there.
+    // The console.error line previously here is removed.
+    // The error will be re-thrown and handled by the calling context (RealtimeStockContext).
     throw error;
   }
 }
