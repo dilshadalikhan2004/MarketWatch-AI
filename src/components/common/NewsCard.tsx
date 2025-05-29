@@ -15,7 +15,7 @@ interface NewsCardProps {
   showSentimentBadge?: boolean;
 }
 
-export function NewsCard({ article, className, showSentimentBadge = false }: NewsCardProps) {
+const MemoizedNewsCard = ({ article, className, showSentimentBadge = false }: NewsCardProps) => {
 
   const getSentimentBadgeVariant = (sentiment?: 'positive' | 'negative' | 'neutral') => {
     if (sentiment === 'positive') return 'default';
@@ -42,7 +42,7 @@ export function NewsCard({ article, className, showSentimentBadge = false }: New
             src={imageSrc}
             alt={imageAlt}
             fill
-            sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw" // Added sizes prop
+            sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
             className="rounded-t-lg object-cover"
             data-ai-hint={imageHint}
             onError={(e) => {
@@ -89,3 +89,5 @@ export function NewsCard({ article, className, showSentimentBadge = false }: New
     </Card>
   );
 }
+MemoizedNewsCard.displayName = 'NewsCard';
+export const NewsCard = React.memo(MemoizedNewsCard);

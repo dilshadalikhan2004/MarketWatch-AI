@@ -15,7 +15,7 @@ interface StockCardProps {
   actions?: React.ReactNode;
 }
 
-export function StockCard({ stock, className, actions }: StockCardProps) {
+const MemoizedStockCard = ({ stock, className, actions }: StockCardProps) => {
   const isPositiveChange = stock.change >= 0;
 
   return (
@@ -44,9 +44,9 @@ export function StockCard({ stock, className, actions }: StockCardProps) {
       <CardContent className="flex-grow pt-0">
         <div className={cn("flex items-center text-sm", isPositiveChange ? "text-green-600" : "text-red-600")}>
           {isPositiveChange ? <TrendingUp className="mr-1 h-4 w-4" /> : <TrendingDown className="mr-1 h-4 w-4" />}
-          <span>{isPositiveChange ? '+' : ''}{formatCurrency(stock.change, '', 2)}</span>
+          <span>{isPositiveChange ? '+' : ''}{formatCurrency(stock.change)}</span>
           <span className="mx-1">/</span>
-          <span>({isPositiveChange ? '+' : ''}{formatPercentage(stock.changePercent, 2)})</span>
+          <span>({isPositiveChange ? '+' : ''}{formatPercentage(stock.changePercent)})</span>
         </div>
         <div className="mt-2 text-xs text-muted-foreground">
           <p>Market Cap: {stock.marketCap || 'N/A'}</p>
@@ -65,13 +65,16 @@ export function StockCard({ stock, className, actions }: StockCardProps) {
     </Card>
   );
 }
+MemoizedStockCard.displayName = 'StockCard';
+export const StockCard = React.memo(MemoizedStockCard);
+
 
 interface MinimalStockCardProps {
   stock: Stock;
   className?: string;
 }
 
-export function MinimalStockCard({ stock, className }: MinimalStockCardProps) {
+const MemoizedMinimalStockCard = ({ stock, className }: MinimalStockCardProps) => {
   const isPositiveChange = stock.change >= 0;
   return (
     <Link href={`/stock/${stock.symbol}`} className="block">
@@ -92,7 +95,7 @@ export function MinimalStockCard({ stock, className }: MinimalStockCardProps) {
               <span className="font-semibold text-sm truncate">{stock.symbol}</span>
             </div>
             <div className={cn("text-xs font-medium", isPositiveChange ? "text-green-600" : "text-red-600")}>
-              {isPositiveChange ? '+' : ''}{formatPercentage(stock.changePercent, 2)}
+              {isPositiveChange ? '+' : ''}{formatPercentage(stock.changePercent)}
             </div>
           </div>
           <p className="text-xs text-muted-foreground truncate mt-0.5">{stock.name}</p>
@@ -102,3 +105,5 @@ export function MinimalStockCard({ stock, className }: MinimalStockCardProps) {
     </Link>
   );
 }
+MemoizedMinimalStockCard.displayName = 'MinimalStockCard';
+export const MinimalStockCard = React.memo(MemoizedMinimalStockCard);
