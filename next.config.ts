@@ -2,6 +2,15 @@
 import type {NextConfig} from 'next';
 
 const nextConfig: NextConfig = {
+  async redirects() {
+    return [
+      {
+        source: '/',
+        destination: '/dashboard',
+        permanent: true, // Use true for permanent redirect, false for temporary
+      },
+    ];
+  },
   /* config options here */
   typescript: {
     ignoreBuildErrors: true,

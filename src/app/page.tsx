@@ -4,17 +4,17 @@
 import React, { useEffect } from 'react';
 import { useRouter } from "next/navigation";
 
+// This page component should ideally not be visibly rendered if the redirect
+// in next.config.js is working correctly for the root path.
+// It serves as a client-side fallback.
 export default function HomePage() {
   const router = useRouter();
 
   useEffect(() => {
+    // Client-side redirect as a failsafe.
     router.replace('/dashboard');
   }, [router]);
 
-  return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-background text-center p-6">
-      <p className="text-lg text-muted-foreground">Redirecting to your dashboard...</p>
-      {/* You can add a loader here if desired */}
-    </div>
-  );
+  // Return null or a minimal loader as the primary redirect is server-side.
+  return null;
 }
