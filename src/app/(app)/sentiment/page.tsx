@@ -1,86 +1,93 @@
 
 "use client";
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { PageHeader } from '@/components/common/PageHeader';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
-import { Sparkles, Loader2, TrendingUp, TrendingDown, MinusCircle, AlertCircle } from 'lucide-react';
-import { analyzeNewsSentimentAction } from '@/lib/actions/sentiment';
-import type { AnalyzeSentimentOutput, NewsArticle } from '@/lib/types';
-import { NewsCard } from '@/components/common/NewsCard';
-import { Alert as ShadCnAlert, AlertTitle, AlertDescription } from '@/components/ui/alert';
-import { getNewsArticlesAction } from '@/lib/actions/news'; // Import the new server action
+import { Sparkles } from 'lucide-react';
+
+// import { useState, useEffect } from 'react';
+// import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+// import { Button } from '@/components/ui/button';
+// import { Textarea } from '@/components/ui/textarea';
+// import { Loader2, TrendingUp, TrendingDown, MinusCircle, AlertCircle } from 'lucide-react';
+// import { analyzeNewsSentimentAction } from '@/lib/actions/sentiment';
+// import type { AnalyzeSentimentOutput, NewsArticle } from '@/lib/types';
+// import { NewsCard } from '@/components/common/NewsCard';
+// import { Alert as ShadCnAlert, AlertTitle, AlertDescription } from '@/components/ui/alert';
+// import { getNewsArticlesAction } from '@/lib/actions/news'; 
 
 
 export default function SentimentPage() {
-  const [textToAnalyze, setTextToAnalyze] = useState('');
-  const [analysisResult, setAnalysisResult] = useState<AnalyzeSentimentOutput | null>(null);
-  const [isLoadingAnalysis, setIsLoadingAnalysis] = useState(false);
-  const [analysisError, setAnalysisError] = useState<string | null>(null);
+  // const [textToAnalyze, setTextToAnalyze] = useState('');
+  // const [analysisResult, setAnalysisResult] = useState<AnalyzeSentimentOutput | null>(null);
+  // const [isLoadingAnalysis, setIsLoadingAnalysis] = useState(false);
+  // const [analysisError, setAnalysisError] = useState<string | null>(null);
   
-  const [recentNewsWithSentiment, setRecentNewsWithSentiment] = useState<NewsArticle[]>([]);
-  const [isLoadingNews, setIsLoadingNews] = useState(true);
-  const [newsError, setNewsError] = useState<string | null>(null);
+  // const [recentNewsWithSentiment, setRecentNewsWithSentiment] = useState<NewsArticle[]>([]);
+  // const [isLoadingNews, setIsLoadingNews] = useState(true);
+  // const [newsError, setNewsError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const fetchNews = async () => {
-      setIsLoadingNews(true);
-      setNewsError(null);
-      const result = await getNewsArticlesAction('finance market', 6); // Fetch 6 articles
-      if (result.error) {
-        setNewsError(result.error);
-        console.error("Error fetching news for sentiment page:", result.error);
-      } else if (result.articles) {
-        setRecentNewsWithSentiment(result.articles);
-      }
-      setIsLoadingNews(false);
-    };
-    fetchNews();
-  }, []);
+  // useEffect(() => {
+  //   const fetchNews = async () => {
+  //     setIsLoadingNews(true);
+  //     setNewsError(null);
+  //     const result = await getNewsArticlesAction('finance market', 6); 
+  //     if (result.error) {
+  //       setNewsError(result.error);
+  //       console.error("Error fetching news for sentiment page:", result.error);
+  //     } else if (result.articles) {
+  //       setRecentNewsWithSentiment(result.articles);
+  //     }
+  //     setIsLoadingNews(false);
+  //   };
+  //   fetchNews();
+  // }, []);
 
-  const handleAnalyze = async () => {
-    if (!textToAnalyze.trim()) {
-      setAnalysisError("Please enter some text to analyze.");
-      return;
-    }
-    if (textToAnalyze.length < 10) {
-      setAnalysisError("Text must be at least 10 characters long for analysis.");
-      return;
-    }
-    setIsLoadingAnalysis(true);
-    setAnalysisError(null);
-    setAnalysisResult(null);
-    const result = await analyzeNewsSentimentAction({ text: textToAnalyze });
-    setIsLoadingAnalysis(false);
-    if ('error' in result) {
-      setAnalysisError(result.error);
-    } else {
-      setAnalysisResult(result);
-    }
-  };
+  // const handleAnalyze = async () => {
+  //   if (!textToAnalyze.trim()) {
+  //     setAnalysisError("Please enter some text to analyze.");
+  //     return;
+  //   }
+  //   if (textToAnalyze.length < 10) {
+  //     setAnalysisError("Text must be at least 10 characters long for analysis.");
+  //     return;
+  //   }
+  //   setIsLoadingAnalysis(true);
+  //   setAnalysisError(null);
+  //   setAnalysisResult(null);
+  //   const result = await analyzeNewsSentimentAction({ text: textToAnalyze });
+  //   setIsLoadingAnalysis(false);
+  //   if ('error' in result) {
+  //     setAnalysisError(result.error);
+  //   } else {
+  //     setAnalysisResult(result);
+  //   }
+  // };
 
-  const getSentimentIcon = (sentiment?: 'positive' | 'negative' | 'neutral') => {
-    if (sentiment === 'positive') return <TrendingUp className="h-5 w-5 text-green-500" />;
-    if (sentiment === 'negative') return <TrendingDown className="h-5 w-5 text-red-500" />;
-    return <MinusCircle className="h-5 w-5 text-gray-500" />;
-  };
+  // const getSentimentIcon = (sentiment?: 'positive' | 'negative' | 'neutral') => {
+  //   if (sentiment === 'positive') return <TrendingUp className="h-5 w-5 text-green-500" />;
+  //   if (sentiment === 'negative') return <TrendingDown className="h-5 w-5 text-red-500" />;
+  //   return <MinusCircle className="h-5 w-5 text-gray-500" />;
+  // };
   
-  const getSentimentColorClass = (sentiment?: 'positive' | 'negative' | 'neutral') => {
-    if (sentiment === 'positive') return 'text-green-600 border-green-500';
-    if (sentiment === 'negative') return 'text-red-600 border-red-500';
-    return 'text-gray-600 border-gray-500';
-  };
+  // const getSentimentColorClass = (sentiment?: 'positive' | 'negative' | 'neutral') => {
+  //   if (sentiment === 'positive') return 'text-green-600 border-green-500';
+  //   if (sentiment === 'negative') return 'text-red-600 border-red-500';
+  //   return 'text-gray-600 border-gray-500';
+  // };
 
+  console.log("SentimentPage (Simplified) rendered");
 
   return (
     <div className="w-full">
       <PageHeader
-        title="Sentiment Analysis"
+        title="Sentiment Analysis (Simplified for Debug)"
         description="Analyze market sentiment from news articles or custom text."
         icon={Sparkles}
       />
+       <p className="mt-4">If you see this, the Sentiment Analysis page component itself is loading!</p>
+       <p className="mt-2">The issue might be in the original content or hooks of this page.</p>
 
+      {/*
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="lg:col-span-1">
           <Card className="shadow-lg">
@@ -149,6 +156,7 @@ export default function SentimentPage() {
           </Card>
         </div>
       </div>
+      */}
     </div>
   );
 }
