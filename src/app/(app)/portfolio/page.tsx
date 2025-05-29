@@ -1,162 +1,147 @@
 
 "use client";
-import React from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { PageHeader } from '@/components/common/PageHeader';
-import { Briefcase } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { PlusCircle, Trash2, TrendingUp, TrendingDown, Info, AlertCircle as AlertCircleIcon, RefreshCw, Briefcase } from 'lucide-react';
+import { useUserPortfolio } from '@/hooks/use-user-portfolio';
+import { mockStocks as initialMockStocksBase } from '@/lib/mock-data'; // Renamed to avoid conflict with state var
+import type { UserPortfolioPosition, Stock as BaseStockType } from '@/lib/types'; 
+import { formatCurrency, formatPercentage } from '@/lib/formatters';
+import { cn } from '@/lib/utils';
+import Image from 'next/image';
+import { useToast } from "@/hooks/use-toast";
+import { useRealtimeStockData } from '@/contexts/RealtimeStockContext';
 
-// import { useState, useEffect, useMemo } from 'react';
-// import { Button } from '@/components/ui/button';
-// import { Input } from '@/components/ui/input';
-// import { Label } from '@/components/ui/label';
-// import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
-// import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-// import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-// import { PlusCircle, Trash2, TrendingUp, TrendingDown, Info, AlertCircle as AlertCircleIcon, RefreshCw } from 'lucide-react';
-// import { useUserPortfolio } from '@/hooks/use-user-portfolio';
-// import { mockStocks as initialMockStocksBase } from '@/lib/mock-data';
-// import type { UserPortfolioPosition } from '@/lib/types'; 
-// import { formatCurrency, formatPercentage } from '@/lib/formatters';
-// import { cn } from '@/lib/utils';
-// import Image from 'next/image';
-// import { useToast } from "@/hooks/use-toast";
-// import { useRealtimeStockData } from '@/contexts/RealtimeStockContext';
-
-// interface DisplayUserPortfolioPosition extends UserPortfolioPosition {
-//   name?: string;
-//   logoUrl?: string;
-//   dataAiHint?: string;
-//   currentPrice: number;
-//   initialCost: number;
-//   marketValue: number;
-//   gainLoss: number;
-//   gainLossPercent: number;
-// }
+interface DisplayUserPortfolioPosition extends UserPortfolioPosition {
+  name?: string;
+  logoUrl?: string;
+  dataAiHint?: string;
+  currentPrice: number;
+  initialCost: number;
+  marketValue: number;
+  gainLoss: number;
+  gainLossPercent: number;
+}
 
 export default function PortfolioPage() {
-  // const { positions, addPosition, removePosition, isLoaded: isPortfolioLoaded } = useUserPortfolio();
-  // const { stockData: realtimeStockData, subscribeToSymbol, unsubscribeFromSymbol, refreshStockData, isLoading: isLoadingData, error: dataError } = useRealtimeStockData();
-  // const { toast } = useToast();
+  const { positions, addPosition, removePosition, isLoaded: isPortfolioLoaded } = useUserPortfolio();
+  const { stockData: realtimeStockData, subscribeToSymbol, unsubscribeFromSymbol, refreshStockData, isLoading: isLoadingData, error: dataError } = useRealtimeStockData();
+  const { toast } = useToast();
 
-  // const [newSymbol, setNewSymbol] = useState('');
-  // const [newShares, setNewShares] = useState('');
-  // const [newAvgPrice, setNewAvgPrice] = useState('');
-  // const [formError, setFormError] = useState<string | null>(null);
-  // const [isMounted, setIsMounted] = useState(false);
+  const [newSymbol, setNewSymbol] = useState('');
+  const [newShares, setNewShares] = useState('');
+  const [newAvgPrice, setNewAvgPrice] = useState('');
+  const [formError, setFormError] = useState<string | null>(null);
+  const [isMounted, setIsMounted] = useState(false);
 
-  // useEffect(() => {
-  //   setIsMounted(true);
-  // }, []);
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
-  // // Subscribe to symbols in the user's portfolio and fetch initial data
-  // useEffect(() => {
-  //   if (isMounted && isPortfolioLoaded && positions.length > 0) {
-  //     const portfolioSymbols = Array.from(new Set(positions.map(p => p.symbol)));
-  //     portfolioSymbols.forEach(subscribeToSymbol);
-  //     if (portfolioSymbols.length > 0) {
-  //       // console.log('[PortfolioPage] Initial data fetch for symbols:', portfolioSymbols);
-  //       refreshStockData(portfolioSymbols);
-  //     }
-  //     return () => {
-  //       portfolioSymbols.forEach(unsubscribeFromSymbol);
-  //     };
-  //   }
-  // }, [positions, isPortfolioLoaded, subscribeToSymbol, unsubscribeFromSymbol, refreshStockData, isMounted]);
+  // Subscribe to symbols in the user's portfolio and fetch initial data
+  useEffect(() => {
+    if (isMounted && isPortfolioLoaded && positions.length > 0) {
+      const portfolioSymbols = Array.from(new Set(positions.map(p => p.symbol)));
+      portfolioSymbols.forEach(subscribeToSymbol);
+      if (portfolioSymbols.length > 0) {
+        refreshStockData(portfolioSymbols);
+      }
+      return () => {
+        portfolioSymbols.forEach(unsubscribeFromSymbol);
+      };
+    }
+  }, [positions, isPortfolioLoaded, subscribeToSymbol, unsubscribeFromSymbol, refreshStockData, isMounted]); // Removed refreshStockData from dep array to avoid loops if its reference changes too often
 
-  // const resetForm = () => {
-  //   setNewSymbol('');
-  //   setNewShares('');
-  //   setNewAvgPrice('');
-  //   setFormError(null);
-  // };
+  const resetForm = () => {
+    setNewSymbol('');
+    setNewShares('');
+    setNewAvgPrice('');
+    setFormError(null);
+  };
 
-  // const handleAddPosition = () => {
-  //   setFormError(null);
-  //   const symbol = newSymbol.trim().toUpperCase();
-  //   const shares = parseFloat(newShares);
-  //   const avgPrice = parseFloat(newAvgPrice);
+  const handleAddPosition = () => {
+    setFormError(null);
+    const symbol = newSymbol.trim().toUpperCase();
+    const shares = parseFloat(newShares);
+    const avgPrice = parseFloat(newAvgPrice);
 
-  //   if (!symbol) {
-  //     setFormError("Stock symbol is required.");
-  //     return;
-  //   }
-  //   if (isNaN(shares) || shares <= 0) {
-  //     setFormError("Number of shares must be a positive number.");
-  //     return;
-  //   }
-  //   if (isNaN(avgPrice) || avgPrice <= 0) {
-  //     setFormError("Average purchase price must be a positive number.");
-  //     return;
-  //   }
-  //   const stockExists = initialMockStocksBase.some(s => s.symbol.toUpperCase() === symbol);
-  //   if (!stockExists) {
-  //     setFormError(`Stock symbol "${symbol}" not found in available mock data for basic info. Price will be fetched.`);
-  //   }
+    if (!symbol) {
+      setFormError("Stock symbol is required.");
+      return;
+    }
+    if (isNaN(shares) || shares <= 0) {
+      setFormError("Number of shares must be a positive number.");
+      return;
+    }
+    if (isNaN(avgPrice) || avgPrice <= 0) {
+      setFormError("Average purchase price must be a positive number.");
+      return;
+    }
+    const stockExists = initialMockStocksBase.some(s => s.symbol.toUpperCase() === symbol);
+    if (!stockExists) {
+      setFormError(`Stock symbol "${symbol}" not found in available mock data for basic info. Price will be fetched.`);
+    }
 
-  //   addPosition({ symbol, shares, avgPurchasePrice: avgPrice });
-  //   subscribeToSymbol(symbol); 
-  //   refreshStockData([symbol]);   
-  //   toast({ title: "Position Added", description: `${shares} shares of ${symbol} added to your simulated portfolio.` });
-  //   resetForm();
-  // };
+    addPosition({ symbol, shares, avgPurchasePrice: avgPrice });
+    subscribeToSymbol(symbol); 
+    refreshStockData([symbol]);   
+    toast({ title: "Position Added", description: `${shares} shares of ${symbol} added to your simulated portfolio.` });
+    resetForm();
+  };
 
-  // const enrichedPositions: DisplayUserPortfolioPosition[] = useMemo(() => {
-  //   if (!isPortfolioLoaded || !isMounted) return [];
-  //   return positions.map(pos => {
-  //     const baseStockInfo = initialMockStocksBase.find(s => s.symbol === pos.symbol);
-  //     const currentRealtimeData = realtimeStockData[pos.symbol];
+  const enrichedPositions: DisplayUserPortfolioPosition[] = useMemo(() => {
+    if (!isPortfolioLoaded || !isMounted) return [];
+    return positions.map(pos => {
+      const baseStockInfo = initialMockStocksBase.find(s => s.symbol === pos.symbol);
+      const currentRealtimeData = realtimeStockData[pos.symbol];
       
-  //     const currentPrice = currentRealtimeData?.price !== undefined ? currentRealtimeData.price : (baseStockInfo?.price || pos.avgPurchasePrice);
+      const currentPrice = (isMounted && currentRealtimeData?.price !== undefined) ? currentRealtimeData.price : (baseStockInfo?.price || pos.avgPurchasePrice);
       
-  //     const initialCost = pos.shares * pos.avgPurchasePrice;
-  //     const marketValue = pos.shares * currentPrice;
-  //     const gainLoss = marketValue - initialCost;
-  //     const gainLossPercent = initialCost !== 0 ? (gainLoss / initialCost) : 0;
+      const initialCost = pos.shares * pos.avgPurchasePrice;
+      const marketValue = pos.shares * currentPrice;
+      const gainLoss = marketValue - initialCost;
+      const gainLossPercent = initialCost !== 0 ? (gainLoss / initialCost) : 0;
 
-  //     return {
-  //       ...pos,
-  //       name: currentRealtimeData?.name || baseStockInfo?.name || pos.symbol,
-  //       logoUrl: currentRealtimeData?.logoUrl || baseStockInfo?.logoUrl,
-  //       dataAiHint: currentRealtimeData?.dataAiHint || baseStockInfo?.dataAiHint,
-  //       currentPrice,
-  //       initialCost,
-  //       marketValue,
-  //       gainLoss,
-  //       gainLossPercent,
-  //     };
-  //   });
-  // }, [positions, realtimeStockData, isPortfolioLoaded, isMounted]);
+      return {
+        ...pos,
+        name: currentRealtimeData?.name || baseStockInfo?.name || pos.symbol,
+        logoUrl: currentRealtimeData?.logoUrl || baseStockInfo?.logoUrl,
+        dataAiHint: currentRealtimeData?.dataAiHint || baseStockInfo?.dataAiHint,
+        currentPrice,
+        initialCost,
+        marketValue,
+        gainLoss,
+        gainLossPercent,
+      };
+    });
+  }, [positions, realtimeStockData, isPortfolioLoaded, isMounted]);
 
-  // const portfolioTotals = useMemo(() => {
-  //   const initialCost = enrichedPositions.reduce((sum, p) => sum + p.initialCost, 0);
-  //   const marketValue = enrichedPositions.reduce((sum, p) => sum + p.marketValue, 0);
-  //   const gainLoss = marketValue - initialCost;
-  //   const gainLossPercent = initialCost !== 0 ? (gainLoss / initialCost) : 0;
-  //   return { initialCost, marketValue, gainLoss, gainLossPercent };
-  // }, [enrichedPositions]);
+  const portfolioTotals = useMemo(() => {
+    const initialCost = enrichedPositions.reduce((sum, p) => sum + p.initialCost, 0);
+    const marketValue = enrichedPositions.reduce((sum, p) => sum + p.marketValue, 0);
+    const gainLoss = marketValue - initialCost;
+    const gainLossPercent = initialCost !== 0 ? (gainLoss / initialCost) : 0;
+    return { initialCost, marketValue, gainLoss, gainLossPercent };
+  }, [enrichedPositions]);
 
-  // const handleRefreshAllPortfolio = () => {
-  //   const portfolioSymbols = Array.from(new Set(positions.map(p => p.symbol)));
-  //   if (portfolioSymbols.length > 0) {
-  //       refreshStockData(portfolioSymbols);
-  //   }
-  // };
-
-  console.log("PortfolioPage (Simplified) rendered");
+  const handleRefreshAllPortfolio = () => {
+    const portfolioSymbols = Array.from(new Set(positions.map(p => p.symbol)));
+    if (portfolioSymbols.length > 0) {
+        refreshStockData(portfolioSymbols);
+    }
+  };
 
   return (
     <div className="w-full">
       <PageHeader
-        title="My Portfolio (Simplified for Debug)"
-        description="Manage your hypothetical stock positions."
-        icon={Briefcase}
-      />
-      <p className="mt-4">If you see this, the Portfolio page component itself is loading!</p>
-      <p className="mt-2">The issue might be in the original content or hooks of this page.</p>
-
-      {/*
-      <PageHeader
         title="My Simulated Portfolio"
-        description="Manage your hypothetical stock positions. Performance based on Alpha Vantage data (may be delayed)."
+        description="Manage your hypothetical stock positions. Performance based on financial data provider (FMP)."
         icon={Briefcase}
         actions={
             <Button onClick={handleRefreshAllPortfolio} disabled={isLoadingData} variant="outline">
@@ -301,7 +286,6 @@ export default function PortfolioPage() {
           )}
         </CardContent>
       </Card>
-       */}
     </div>
   );
 }

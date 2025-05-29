@@ -3,60 +3,58 @@
 import React from 'react';
 import { PageHeader } from '@/components/common/PageHeader';
 import { ListChecks } from 'lucide-react';
-
-// import { Button } from '@/components/ui/button';
-// import { Input } from '@/components/ui/input';
-// import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-// import { StockCard } from '@/components/common/StockCard';
-// import { PlusCircle, Trash2 } from 'lucide-react';
-// import { useWatchlist } from '@/hooks/use-watchlist';
-// import { getStockBySymbol, mockStocks } from '@/lib/mock-data';
-// import type { Stock } from '@/lib/types';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { StockCard } from '@/components/common/StockCard';
+import { PlusCircle, Trash2 } from 'lucide-react';
+import { useWatchlist } from '@/hooks/use-watchlist';
+import { getStockBySymbol, mockStocks } from '@/lib/mock-data';
+import type { Stock } from '@/lib/types';
+import { useToast } from "@/hooks/use-toast";
 
 export default function WatchlistPage() {
-  // const { watchlist, addToWatchlist, removeFromWatchlist, isInWatchlist, isLoaded } = useWatchlist();
-  // const [newSymbol, setNewSymbol] = React.useState('');
-  // const [error, setError] = React.useState('');
+  const { watchlist, addToWatchlist, removeFromWatchlist, isInWatchlist, isLoaded } = useWatchlist();
+  const { toast } = useToast();
+  const [newSymbol, setNewSymbol] = React.useState('');
+  const [error, setError] = React.useState('');
 
-  // const handleAddSymbol = () => {
-  //   if (!newSymbol.trim()) {
-  //     setError('Please enter a stock symbol.');
-  //     return;
-  //   }
-  //   const stockExists = mockStocks.some(s => s.symbol.toUpperCase() === newSymbol.trim().toUpperCase());
-  //   if (!stockExists) {
-  //     setError(`Stock symbol "${newSymbol.trim().toUpperCase()}" not found in available mock data.`);
-  //     return;
-  //   }
-  //   if (isInWatchlist(newSymbol.trim().toUpperCase())) {
-  //     setError(`"${newSymbol.trim().toUpperCase()}" is already in your watchlist.`);
-  //     return;
-  //   }
-  //   addToWatchlist(newSymbol.trim().toUpperCase());
-  //   setNewSymbol('');
-  //   setError('');
-  // };
+  const handleAddSymbol = () => {
+    if (!newSymbol.trim()) {
+      setError('Please enter a stock symbol.');
+      return;
+    }
+    const symbolUpper = newSymbol.trim().toUpperCase();
+    const stockExists = mockStocks.some(s => s.symbol.toUpperCase() === symbolUpper);
+    if (!stockExists) {
+      setError(`Stock symbol "${symbolUpper}" not found in available mock data.`);
+      return;
+    }
+    if (isInWatchlist(symbolUpper)) {
+      setError(`"${symbolUpper}" is already in your watchlist.`);
+      return;
+    }
+    addToWatchlist(symbolUpper);
+    toast({ title: "Stock Added", description: `${symbolUpper} added to your watchlist.` });
+    setNewSymbol('');
+    setError('');
+  };
 
-  // const watchlistStocks: Stock[] = React.useMemo(() => {
-  //   if (!isLoaded) return [];
-  //   return watchlist
-  //     .map(item => getStockBySymbol(item.symbol))
-  //     .filter(stock => stock !== undefined) as Stock[];
-  // }, [watchlist, isLoaded]);
-
-  console.log("WatchlistPage rendered"); // Add a log to see if it even reaches here
+  const watchlistStocks: Stock[] = React.useMemo(() => {
+    if (!isLoaded) return [];
+    return watchlist
+      .map(item => getStockBySymbol(item.symbol))
+      .filter(stock => stock !== undefined) as Stock[];
+  }, [watchlist, isLoaded]);
 
   return (
     <div className="w-full">
       <PageHeader
-        title="My Watchlist (Simplified for Debug)"
-        description="Track stocks you are interested in."
+        title="My Watchlist"
+        description="Track stocks you are interested in. Data sourced from mock data."
         icon={ListChecks}
       />
-      <p className="mt-4">If you see this, the Watchlist page component itself is loading!</p>
-      <p className="mt-2">The issue might be in the original content or hooks of this page, or other non-working pages.</p>
-
-      {/*
+      
       <Card className="mb-6 shadow-lg">
         <CardHeader>
           <CardTitle>Add Stock to Watchlist</CardTitle>
@@ -69,7 +67,7 @@ export default function WatchlistPage() {
                 placeholder="Enter stock symbol (e.g., AAPL)"
                 value={newSymbol}
                 onChange={(e) => {
-                  setNewSymbol(e.target.value);
+                  setNewSymbol(e.target.value.toUpperCase());
                   if (error) setError('');
                 }}
                 className="max-w-xs"
@@ -82,6 +80,14 @@ export default function WatchlistPage() {
           </div>
         </CardContent>
       </Card>
+
+      {!isLoaded && (
+         <Card className="shadow-lg">
+          <CardContent className="pt-6">
+            <p className="text-muted-foreground text-center">Loading watchlist...</p>
+          </CardContent>
+        </Card>
+      )}
 
       {isLoaded && watchlistStocks.length === 0 && (
         <Card className="shadow-lg">
@@ -98,7 +104,7 @@ export default function WatchlistPage() {
               key={stock.symbol}
               stock={stock}
               actions={
-                <Button variant="ghost" size="sm" onClick={() => removeFromWatchlist(stock.symbol)}>
+                <Button variant="ghost" size="sm" onClick={() => { removeFromWatchlist(stock.symbol); toast({title: "Stock Removed", description: `${stock.symbol} removed from your watchlist.`})}}>
                   <Trash2 className="h-4 w-4 mr-1 text-destructive" /> Remove
                 </Button>
               }
@@ -106,7 +112,6 @@ export default function WatchlistPage() {
           ))}
         </div>
       )}
-      */}
     </div>
   );
 }

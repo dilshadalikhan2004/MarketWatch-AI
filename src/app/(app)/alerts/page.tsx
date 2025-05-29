@@ -1,87 +1,86 @@
 
 "use client";
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { PageHeader } from '@/components/common/PageHeader';
-import { BellRing } from 'lucide-react';
-
-// import { useState } from 'react';
-// import { Button } from '@/components/ui/button';
-// import { Input } from '@/components/ui/input';
-// import { Label } from '@/components/ui/label';
-// import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-// import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-// import { PlusCircle, Trash2, Edit3 } from 'lucide-react';
-// import { useAlerts } from '@/hooks/use-alerts';
-// import { mockStocks } from '@/lib/mock-data';
-// import type { Alert } from '@/lib/types';
-// import { formatCurrency, formatDateTime } from '@/lib/formatters';
-// import { useToast } from "@/hooks/use-toast";
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { PlusCircle, Trash2, Edit3, BellRing } from 'lucide-react';
+import { useAlerts } from '@/hooks/use-alerts';
+import { mockStocks } from '@/lib/mock-data';
+import type { Alert } from '@/lib/types';
+import { formatCurrency, formatDateTime } from '@/lib/formatters';
+import { useToast } from "@/hooks/use-toast";
 
 export default function AlertsPage() {
-  // const { alerts, addAlert, removeAlert, updateAlert, isLoaded } = useAlerts();
-  // const { toast } = useToast();
+  const { alerts, addAlert, removeAlert, updateAlert, isLoaded } = useAlerts();
+  const { toast } = useToast();
 
-  // const [symbol, setSymbol] = useState('');
-  // const [condition, setCondition] = useState<'above' | 'below'>('above');
-  // const [targetPrice, setTargetPrice] = useState('');
-  // const [editingAlert, setEditingAlert] = useState<Alert | null>(null);
-  // const [formError, setFormError] = useState<string | null>(null);
+  const [symbol, setSymbol] = useState('');
+  const [condition, setCondition] = useState<'above' | 'below'>('above');
+  const [targetPrice, setTargetPrice] = useState('');
+  const [editingAlert, setEditingAlert] = useState<Alert | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [isMounted, setIsMounted] = useState(false);
 
-  // const resetForm = () => {
-  //   setSymbol('');
-  //   setCondition('above');
-  //   setTargetPrice('');
-  //   setEditingAlert(null);
-  //   setFormError(null);
-  // };
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
-  // const handleSubmit = () => {
-  //   setFormError(null);
-  //   if (!symbol.trim() || !targetPrice.trim()) {
-  //     setFormError("Symbol and target price are required.");
-  //     return;
-  //   }
-  //   const price = parseFloat(targetPrice);
-  //   if (isNaN(price) || price <= 0) {
-  //     setFormError("Target price must be a positive number.");
-  //     return;
-  //   }
-  //   const stockExists = mockStocks.some(s => s.symbol.toUpperCase() === symbol.trim().toUpperCase());
-  //   if (!stockExists) {
-  //     setFormError(`Stock symbol "${symbol.trim().toUpperCase()}" not found in mock data.`);
-  //     return;
-  //   }
 
-  //   if (editingAlert) {
-  //     updateAlert(editingAlert.id, { symbol: symbol.trim().toUpperCase(), condition, targetPrice: price });
-  //     toast({ title: "Alert Updated", description: `Alert for ${symbol.toUpperCase()} has been updated.` });
-  //   } else {
-  //     addAlert({ symbol: symbol.trim().toUpperCase(), condition, targetPrice: price });
-  //     toast({ title: "Alert Created", description: `Alert for ${symbol.toUpperCase()} set at ${formatCurrency(price)}.` });
-  //   }
-  //   resetForm();
-  // };
+  const resetForm = () => {
+    setSymbol('');
+    setCondition('above');
+    setTargetPrice('');
+    setEditingAlert(null);
+    setFormError(null);
+  };
+
+  const handleSubmit = () => {
+    setFormError(null);
+    if (!symbol.trim() || !targetPrice.trim()) {
+      setFormError("Symbol and target price are required.");
+      return;
+    }
+    const price = parseFloat(targetPrice);
+    if (isNaN(price) || price <= 0) {
+      setFormError("Target price must be a positive number.");
+      return;
+    }
+    const stockExists = mockStocks.some(s => s.symbol.toUpperCase() === symbol.trim().toUpperCase());
+    if (!stockExists) {
+      setFormError(`Stock symbol "${symbol.trim().toUpperCase()}" not found in mock data.`);
+      return;
+    }
+
+    if (editingAlert) {
+      updateAlert(editingAlert.id, { symbol: symbol.trim().toUpperCase(), condition, targetPrice: price });
+      toast({ title: "Alert Updated", description: `Alert for ${symbol.toUpperCase()} has been updated.` });
+    } else {
+      addAlert({ symbol: symbol.trim().toUpperCase(), condition, targetPrice: price, createdAt: new Date().toISOString() });
+      toast({ title: "Alert Created", description: `Alert for ${symbol.toUpperCase()} set at ${formatCurrency(price)}.` });
+    }
+    resetForm();
+  };
   
-  // const handleEdit = (alert: Alert) => {
-  //   setEditingAlert(alert);
-  //   setSymbol(alert.symbol);
-  //   setCondition(alert.condition as 'above' | 'below');
-  //   setTargetPrice(alert.targetPrice.toString());
-  // };
+  const handleEdit = (alert: Alert) => {
+    setEditingAlert(alert);
+    setSymbol(alert.symbol);
+    setCondition(alert.condition as 'above' | 'below'); // Assuming only above/below for now
+    setTargetPrice(alert.targetPrice.toString());
+  };
 
-  console.log("AlertsPage (Simplified) rendered");
 
   return (
     <div className="w-full">
       <PageHeader
-        title="Price Alerts (Simplified for Debug)"
-        description="Set up and manage your stock price notifications."
+        title="Price Alerts"
+        description="Set up and manage your stock price notifications. Alerts are stored locally."
         icon={BellRing}
       />
-      <p className="mt-4">If you see this, the Alerts page component itself is loading!</p>
-      <p className="mt-2">The issue might be in the original content or hooks of this page.</p>
       
-      {/*
       <Card className="mb-6 shadow-lg">
         <CardHeader>
           <CardTitle>{editingAlert ? 'Edit Alert' : 'Create New Alert'}</CardTitle>
@@ -126,13 +125,13 @@ export default function AlertsPage() {
         <CardHeader>
           <CardTitle>Active Alerts</CardTitle>
           <CardDescription>
-            {isLoaded && alerts.length > 0 
+            {isMounted && isLoaded && alerts.length > 0 
               ? `You have ${alerts.length} active alert(s).`
-              : "No active alerts."}
+              : isMounted && isLoaded ? "No active alerts." : "Loading alerts..."}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {isLoaded && alerts.length > 0 ? (
+          {isMounted && isLoaded && alerts.length > 0 ? (
             <ul className="space-y-3">
               {alerts.map(alert => (
                 <li key={alert.id} className="flex items-center justify-between p-3 border rounded-lg bg-card hover:bg-muted/50 transition-colors">
@@ -156,12 +155,11 @@ export default function AlertsPage() {
             </ul>
           ) : (
             <p className="text-muted-foreground text-center">
-              {isLoaded ? "You have no active alerts. Create one above!" : "Loading alerts..."}
+              {isMounted && isLoaded ? "You have no active alerts. Create one above!" : "Loading alerts..."}
             </p>
           )}
         </CardContent>
       </Card>
-      */}
     </div>
   );
 }
